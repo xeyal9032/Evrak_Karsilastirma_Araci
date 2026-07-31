@@ -26,6 +26,18 @@ GUI_KEYS = {
     "err_permission", "err_not_found", "err_unexpected",
 }
 CLI_KEYS = {"cli_ok", "cli_counts"}
+HTML_KEYS = {
+    "html_title", "html_generated", "html_file1", "html_file2",
+    "html_card_match", "html_card_mismatch", "html_card_only1", "html_card_only2",
+    "html_account_diffs", "html_no_diffs",
+    "html_th_konto", "html_th_bal1", "html_th_bal2", "html_th_diff", "html_th_n1", "html_th_n2",
+    "html_rows",
+    "html_filter_all", "html_filter_match", "html_filter_mismatch",
+    "html_filter_only1", "html_filter_only2", "html_filter_red", "html_filter_placeholder",
+    "html_col_source", "html_col_line", "html_col_amount", "html_col_sh", "html_col_konto",
+    "html_col_gegen", "html_col_date", "html_col_beleg", "html_col_text", "html_col_note",
+    "html_col_status", "html_missing", "html_count", "pdf_critical_rows",
+}
 
 # format() placeholder'lari (key -> beklenen alan adlari)
 PLACEHOLDERS = {
@@ -42,6 +54,9 @@ PLACEHOLDERS = {
     "summary_diff_line": {"k", "d"},
     "cli_ok": {"path"},
     "cli_counts": {"m", "mm", "o1", "o2"},
+    "html_generated": {"ts"},
+    "html_file1": {"path"},
+    "html_file2": {"path"},
 }
 
 _PLACEHOLDER_RE = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)(?::[^}]*)?\}")
@@ -95,6 +110,12 @@ class TestKeyParity(unittest.TestCase):
             keys = i18n.locale_keys(lang)
             missing = CLI_KEYS - keys
             self.assertFalse(missing, msg=f"{lang} missing CLI keys: {missing}")
+
+    def test_html_keys_present_all_langs(self):
+        for lang in i18n.SUPPORTED:
+            keys = i18n.locale_keys(lang)
+            missing = HTML_KEYS - keys
+            self.assertFalse(missing, msg=f"{lang} missing HTML keys: {missing}")
 
     def test_locale_keys_default_is_turkish(self):
         self.assertEqual(i18n.locale_keys(), i18n.locale_keys("tr"))

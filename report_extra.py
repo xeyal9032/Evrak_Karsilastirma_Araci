@@ -5,9 +5,20 @@ import json
 import os
 from datetime import datetime
 
+import i18n
+
 
 def _esc(v):
     return html.escape("" if v is None else str(v))
+
+
+def _t(key, lang, **kwargs):
+    return i18n.t(key, lang=lang, **kwargs)
+
+
+def _norm_lang(lang):
+    lang = (lang or i18n.detect_system_lang() or "tr").lower()
+    return lang if lang in i18n.SUPPORTED else "tr"
 
 
 def _entry_cells(entry, source, note, status):
@@ -32,8 +43,9 @@ def _entry_cells(entry, source, note, status):
     }
 
 
-def groups_to_rows(groups, f1_label, f2_label):
+def groups_to_rows(groups, f1_label, f2_label, lang=None):
     """Flatten compare groups into display rows for HTML/PDF."""
+    missing = _t("html_missing", _norm_lang(lang))
     rows = []
     for g in groups:
         kind = g["kind"]
@@ -50,18 +62,22 @@ def groups_to_rows(groups, f1_label, f2_label):
             rows.append(_entry_cells(e2, f2_label, note, "MISMATCH"))
         elif kind == "ONLY1":
             rows.append(_entry_cells(g["e1"], f1_label, "", "ONLY1"))
-            rows.append(_entry_cells(None, f2_label, "MISSING", "ONLY1"))
+            rows.append(_entry_cells(None, f2_label, missing, "ONLY1"))
         elif kind == "ONLY2":
-            rows.append(_entry_cells(None, f1_label, "MISSING", "ONLY2"))
+            rows.append(_entry_cells(None, f1_label, missing, "ONLY2"))
             rows.append(_entry_cells(g["e2"], f2_label, "", "ONLY2"))
     return rows
 
 
 def write_html_report(out_path, *, f1_path, f2_path, f1_label, f2_label,
                       match_count, mismatch_count, only1_count, only2_count,
-                      groups, diffs=None, title="Evrak Karsilastirma"):
-    rows = groups_to_rows(groups, f1_label, f2_label)
-    payload = json.dumps(rows, ensure_ascii=False)
+                      groups, diffs=None, title=None, lang=None):
+    lang = _norm_lang(lang)
+    title = title or _t("html_title", lang)
+    rows = groups_to_rows(groups, f1_label, f2_label, lang=lang)
+    # Escape < so a Buchungstext containing </script> cannot break out of the
+    # inline JSON script block (JSON itself allows raw <).
+    payload = json.dumps(rows, ensure_ascii=False).replace("<", "\\u003c").replace(">", "\\u003e")
     generated = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     top_diffs = diffs[:10] if diffs else []
 
@@ -72,9 +88,11 @@ def write_html_report(out_path, *, f1_path, f2_path, f1_label, f2_label,
             f"<tr><td>{_esc(k)}</td><td>{b1:,.2f}</td><td>{b2:,.2f}</td>"
             f"<td>{d:,.2f}</td><td>{c1}</td><td>{c2}</td></tr>"
         )
+    if not diff_html:
+        diff_html = f"<tr><td colspan='6'>{_esc(_t('html_no_diffs', lang))}</td></tr>"
 
     doc = f"""<!DOCTYPE html>
-<html lang="en">
+<html lang="{_esc(lang)}">
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
@@ -107,40 +125,56 @@ tr.ONLY1 td, tr.ONLY2 td {{ background:var(--only); }}
 <body>
 <header class="wrap">
   <h1>{_esc(title)}</h1>
-  <div class="meta">Generated { _esc(generated) }</div>
-  <div class="meta">File 1: {_esc(f1_path)}</div>
-  <div class="meta">File 2: {_esc(f2_path)}</div>
+  <div class="meta">{_esc(_t("html_generated", lang, ts=generated))}</div>
+  <div class="meta">{_esc(_t("html_file1", lang, path=f1_path))}</div>
+  <div class="meta">{_esc(_t("html_file2", lang, path=f2_path))}</div>
 </header>
 <main class="wrap">
   <div class="cards">
-    <div class="card">Match (yellow)<b id="c-match">{match_count}</b></div>
-    <div class="card">Mismatch (orange)<b id="c-mis">{mismatch_count}</b></div>
-    <div class="card">Only file1 (red)<b id="c-o1">{only1_count}</b></div>
-    <div class="card">Only file2 (red)<b id="c-o2">{only2_count}</b></div>
+    <div class="card">{_esc(_t("html_card_match", lang))}<b id="c-match">{match_count}</b></div>
+    <div class="card">{_esc(_t("html_card_mismatch", lang))}<b id="c-mis">{mismatch_count}</b></div>
+    <div class="card">{_esc(_t("html_card_only1", lang))}<b id="c-o1">{only1_count}</b></div>
+    <div class="card">{_esc(_t("html_card_only2", lang))}<b id="c-o2">{only2_count}</b></div>
   </div>
-  <h2>Account differences</h2>
+  <h2>{_esc(_t("html_account_diffs", lang))}</h2>
   <div class="small" style="max-height:240px">
   <table>
-    <thead><tr><th>Konto</th><th>Bal 1</th><th>Bal 2</th><th>Diff</th><th>N1</th><th>N2</th></tr></thead>
-    <tbody>{diff_html or "<tr><td colspan='6'>No significant diffs</td></tr>"}</tbody>
+    <thead><tr>
+      <th>{_esc(_t("html_th_konto", lang))}</th>
+      <th>{_esc(_t("html_th_bal1", lang))}</th>
+      <th>{_esc(_t("html_th_bal2", lang))}</th>
+      <th>{_esc(_t("html_th_diff", lang))}</th>
+      <th>{_esc(_t("html_th_n1", lang))}</th>
+      <th>{_esc(_t("html_th_n2", lang))}</th>
+    </tr></thead>
+    <tbody>{diff_html}</tbody>
   </table>
   </div>
-  <h2>Rows</h2>
+  <h2>{_esc(_t("html_rows", lang))}</h2>
   <div class="filters">
-    <button type="button" class="active" data-filter="ALL">All</button>
-    <button type="button" data-filter="MATCH">Match</button>
-    <button type="button" data-filter="MISMATCH">Orange</button>
-    <button type="button" data-filter="ONLY1">Only 1</button>
-    <button type="button" data-filter="ONLY2">Only 2</button>
-    <button type="button" data-filter="RED">Red (1+2)</button>
-    <input id="q" type="search" placeholder="Filter text / Konto / Belegfeld1..."/>
+    <button type="button" class="active" data-filter="ALL">{_esc(_t("html_filter_all", lang))}</button>
+    <button type="button" data-filter="MATCH">{_esc(_t("html_filter_match", lang))}</button>
+    <button type="button" data-filter="MISMATCH">{_esc(_t("html_filter_mismatch", lang))}</button>
+    <button type="button" data-filter="ONLY1">{_esc(_t("html_filter_only1", lang))}</button>
+    <button type="button" data-filter="ONLY2">{_esc(_t("html_filter_only2", lang))}</button>
+    <button type="button" data-filter="RED">{_esc(_t("html_filter_red", lang))}</button>
+    <input id="q" type="search" placeholder="{_esc(_t("html_filter_placeholder", lang))}"/>
   </div>
   <div class="small">
   <table>
     <thead>
       <tr>
-        <th>Source</th><th>Line</th><th>Amount</th><th>S/H</th><th>Konto</th>
-        <th>Gegen</th><th>Date</th><th>Belegfeld1</th><th>Text</th><th>Note</th><th>Status</th>
+        <th>{_esc(_t("html_col_source", lang))}</th>
+        <th>{_esc(_t("html_col_line", lang))}</th>
+        <th>{_esc(_t("html_col_amount", lang))}</th>
+        <th>{_esc(_t("html_col_sh", lang))}</th>
+        <th>{_esc(_t("html_col_konto", lang))}</th>
+        <th>{_esc(_t("html_col_gegen", lang))}</th>
+        <th>{_esc(_t("html_col_date", lang))}</th>
+        <th>{_esc(_t("html_col_beleg", lang))}</th>
+        <th>{_esc(_t("html_col_text", lang))}</th>
+        <th>{_esc(_t("html_col_note", lang))}</th>
+        <th>{_esc(_t("html_col_status", lang))}</th>
       </tr>
     </thead>
     <tbody id="tbody"></tbody>
@@ -196,13 +230,59 @@ render();
     return out_path
 
 
+def _register_pdf_fonts():
+    """Register a Unicode TTF so TR/RU/DE glyphs render (Helvetica cannot)."""
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+
+    regular_name = "EvrakSans"
+    bold_name = "EvrakSans-Bold"
+    if regular_name in pdfmetrics.getRegisteredFontNames():
+        return regular_name, bold_name
+
+    windir = os.environ.get("WINDIR", r"C:\Windows")
+    regular_candidates = [
+        os.path.join(windir, "Fonts", "arialuni.ttf"),
+        os.path.join(windir, "Fonts", "ARIALUNI.TTF"),
+        os.path.join(windir, "Fonts", "segoeui.ttf"),
+        os.path.join(windir, "Fonts", "arial.ttf"),
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+        "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+    ]
+    bold_candidates = [
+        os.path.join(windir, "Fonts", "segoeuib.ttf"),
+        os.path.join(windir, "Fonts", "arialbd.ttf"),
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+        "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
+    ]
+
+    regular = next((p for p in regular_candidates if os.path.isfile(p)), None)
+    if not regular:
+        return "Helvetica", "Helvetica-Bold"
+
+    pdfmetrics.registerFont(TTFont(regular_name, regular))
+    bold = next((p for p in bold_candidates if os.path.isfile(p)), None)
+    if bold:
+        pdfmetrics.registerFont(TTFont(bold_name, bold))
+    else:
+        bold_name = regular_name
+    return regular_name, bold_name
+
+
+def _pdf_cell(text, style):
+    from reportlab.platypus import Paragraph
+    return Paragraph(_esc(text), style)
+
+
 def write_pdf_report(out_path, *, f1_path, f2_path, f1_label, f2_label,
                      match_count, mismatch_count, only1_count, only2_count,
-                     groups, diffs=None, title="Evrak Karsilastirma"):
+                     groups, diffs=None, title=None, lang=None):
     try:
         from reportlab.lib import colors
         from reportlab.lib.pagesizes import A4
-        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.styles import ParagraphStyle
         from reportlab.lib.units import cm
         from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
     except ImportError as ex:
@@ -210,77 +290,148 @@ def write_pdf_report(out_path, *, f1_path, f2_path, f1_label, f2_label,
             "PDF export requires reportlab. Install with: pip install reportlab"
         ) from ex
 
+    lang = _norm_lang(lang)
+    title = title or _t("html_title", lang)
+    generated = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    font, font_bold = _register_pdf_fonts()
+
+    style_title = ParagraphStyle(
+        "EvrakTitle", fontName=font_bold, fontSize=16, leading=20, spaceAfter=8,
+    )
+    style_meta = ParagraphStyle(
+        "EvrakMeta", fontName=font, fontSize=9, leading=12, textColor=colors.HexColor("#5c6570"),
+    )
+    style_h2 = ParagraphStyle(
+        "EvrakH2", fontName=font_bold, fontSize=12, leading=15, spaceBefore=10, spaceAfter=6,
+    )
+    style_cell = ParagraphStyle(
+        "EvrakCell", fontName=font, fontSize=7, leading=9,
+    )
+    style_cell_bold = ParagraphStyle(
+        "EvrakCellBold", fontName=font_bold, fontSize=8, leading=10, textColor=colors.white,
+    )
+
     os.makedirs(os.path.dirname(os.path.abspath(out_path)) or ".", exist_ok=True)
-    doc = SimpleDocTemplate(out_path, pagesize=A4, leftMargin=1.5 * cm, rightMargin=1.5 * cm)
-    styles = getSampleStyleSheet()
-    styles.add(ParagraphStyle(name="Small", parent=styles["Normal"], fontSize=9, leading=12))
+    doc = SimpleDocTemplate(
+        out_path, pagesize=A4,
+        leftMargin=1.4 * cm, rightMargin=1.4 * cm,
+        topMargin=1.4 * cm, bottomMargin=1.4 * cm,
+    )
     story = []
-    story.append(Paragraph(html.escape(title), styles["Title"]))
-    story.append(Paragraph(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", styles["Small"]))
-    story.append(Paragraph(f"File 1 ({html.escape(f1_label)}): {html.escape(f1_path)}", styles["Small"]))
-    story.append(Paragraph(f"File 2 ({html.escape(f2_label)}): {html.escape(f2_path)}", styles["Small"]))
-    story.append(Spacer(1, 0.4 * cm))
+    story.append(Paragraph(_esc(title), style_title))
+    story.append(Paragraph(_esc(_t("html_generated", lang, ts=generated)), style_meta))
+    story.append(Paragraph(_esc(_t("html_file1", lang, path=f1_path)), style_meta))
+    story.append(Paragraph(_esc(_t("html_file2", lang, path=f2_path)), style_meta))
+    story.append(Spacer(1, 0.35 * cm))
 
     summary = [
-        ["Status", "Count"],
-        ["MATCH (yellow)", str(match_count)],
-        ["MISMATCH (orange)", str(mismatch_count)],
-        ["ONLY1 (red)", str(only1_count)],
-        ["ONLY2 (red)", str(only2_count)],
+        [_pdf_cell(_t("html_col_status", lang), style_cell_bold),
+         _pdf_cell(_t("html_count", lang), style_cell_bold)],
+        [_pdf_cell(_t("html_card_match", lang), style_cell),
+         _pdf_cell(str(match_count), style_cell)],
+        [_pdf_cell(_t("html_card_mismatch", lang), style_cell),
+         _pdf_cell(str(mismatch_count), style_cell)],
+        [_pdf_cell(_t("html_card_only1", lang), style_cell),
+         _pdf_cell(str(only1_count), style_cell)],
+        [_pdf_cell(_t("html_card_only2", lang), style_cell),
+         _pdf_cell(str(only2_count), style_cell)],
     ]
-    t = Table(summary, colWidths=[10 * cm, 4 * cm])
+    t = Table(summary, colWidths=[12 * cm, 3.5 * cm])
     t.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#4472C4")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("GRID", (0, 0), (-1, -1), 0.4, colors.grey),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("BACKGROUND", (0, 1), (-1, 1), colors.HexColor("#FFFF99")),
-        ("BACKGROUND", (0, 2), (-1, 2), colors.HexColor("#FFC000")),
-        ("BACKGROUND", (0, 3), (-1, 4), colors.HexColor("#FF6B6B")),
+        ("BACKGROUND", (0, 1), (-1, 1), colors.HexColor("#FFF3A0")),
+        ("BACKGROUND", (0, 2), (-1, 2), colors.HexColor("#FFD08A")),
+        ("BACKGROUND", (0, 3), (-1, 4), colors.HexColor("#FFB3B3")),
+        ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#d8dde3")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
     ]))
     story.append(t)
-    story.append(Spacer(1, 0.5 * cm))
-    story.append(Paragraph("Top account differences", styles["Heading2"]))
 
-    diff_rows = [["Konto", "Bal1", "Bal2", "Diff"]]
+    story.append(Paragraph(_esc(_t("html_account_diffs", lang)), style_h2))
+    diff_rows = [[
+        _pdf_cell(_t("html_th_konto", lang), style_cell_bold),
+        _pdf_cell(_t("html_th_bal1", lang), style_cell_bold),
+        _pdf_cell(_t("html_th_bal2", lang), style_cell_bold),
+        _pdf_cell(_t("html_th_diff", lang), style_cell_bold),
+    ]]
     for item in (diffs or [])[:15]:
         k, b1, b2, d, c1, c2 = item
-        diff_rows.append([str(k), f"{b1:,.2f}", f"{b2:,.2f}", f"{d:,.2f}"])
+        diff_rows.append([
+            _pdf_cell(str(k), style_cell),
+            _pdf_cell(f"{b1:,.2f}", style_cell),
+            _pdf_cell(f"{b2:,.2f}", style_cell),
+            _pdf_cell(f"{d:,.2f}", style_cell),
+        ])
     if len(diff_rows) == 1:
-        diff_rows.append(["—", "—", "—", "0"])
-    td = Table(diff_rows, colWidths=[3 * cm, 3.5 * cm, 3.5 * cm, 3.5 * cm])
+        diff_rows.append([
+            _pdf_cell(_t("html_no_diffs", lang), style_cell),
+            _pdf_cell("-", style_cell),
+            _pdf_cell("-", style_cell),
+            _pdf_cell("-", style_cell),
+        ])
+    td = Table(diff_rows, colWidths=[3.2 * cm, 4 * cm, 4 * cm, 4 * cm])
     td.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#4472C4")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("GRID", (0, 0), (-1, -1), 0.3, colors.grey),
-        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#d8dde3")),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f6f7f9")]),
     ]))
     story.append(td)
-    story.append(Spacer(1, 0.5 * cm))
-    story.append(Paragraph("Critical rows (red / orange sample)", styles["Heading2"]))
 
-    sample = [["Status", "Source", "Konto", "Amount", "Belegfeld1", "Text"]]
-    for row in groups_to_rows(groups, f1_label, f2_label):
+    story.append(Paragraph(_esc(_t("pdf_critical_rows", lang)), style_h2))
+    sample = [[
+        _pdf_cell(_t("html_col_status", lang), style_cell_bold),
+        _pdf_cell(_t("html_col_source", lang), style_cell_bold),
+        _pdf_cell(_t("html_col_konto", lang), style_cell_bold),
+        _pdf_cell(_t("html_col_amount", lang), style_cell_bold),
+        _pdf_cell(_t("html_col_beleg", lang), style_cell_bold),
+        _pdf_cell(_t("html_col_text", lang), style_cell_bold),
+    ]]
+    for row in groups_to_rows(groups, f1_label, f2_label, lang=lang):
         if row["status"] not in ("ONLY1", "ONLY2", "MISMATCH"):
             continue
+        # Skip empty placeholder half-rows (no konto/amount/text)
+        if not row["konto"] and not row["umsatz"] and not row["text"] and row["note"] in (
+            _t("html_missing", lang), "MISSING", ""
+        ):
+            continue
         sample.append([
-            row["status"],
-            str(row["source"])[:18],
-            str(row["konto"])[:10],
-            str(row["umsatz"])[:12],
-            str(row["belegfeld1"])[:18],
-            str(row["text"])[:40],
+            _pdf_cell(row["status"], style_cell),
+            _pdf_cell(str(row["source"])[:28], style_cell),
+            _pdf_cell(str(row["konto"])[:12], style_cell),
+            _pdf_cell(str(row["umsatz"])[:14], style_cell),
+            _pdf_cell(str(row["belegfeld1"])[:22], style_cell),
+            _pdf_cell(str(row["text"])[:70], style_cell),
         ])
-        if len(sample) > 40:
+        if len(sample) > 45:
             break
     if len(sample) == 1:
-        sample.append(["—", "—", "—", "—", "—", "No critical rows"])
-    ts = Table(sample, colWidths=[2.2 * cm, 2.5 * cm, 2 * cm, 2.2 * cm, 3 * cm, 5 * cm])
+        sample.append([
+            _pdf_cell("-", style_cell),
+            _pdf_cell(_t("html_no_diffs", lang), style_cell),
+            _pdf_cell("-", style_cell),
+            _pdf_cell("-", style_cell),
+            _pdf_cell("-", style_cell),
+            _pdf_cell("-", style_cell),
+        ])
+    ts = Table(sample, colWidths=[2.0 * cm, 3.0 * cm, 1.8 * cm, 2.0 * cm, 2.8 * cm, 5.0 * cm])
     ts.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#4472C4")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
-        ("FONTSIZE", (0, 0), (-1, -1), 7),
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#d8dde3")),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 3),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+        ("TOPPADDING", (0, 0), (-1, -1), 2),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#fff5f5")]),
     ]))
     story.append(ts)
     doc.build(story)

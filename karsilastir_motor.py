@@ -1128,7 +1128,8 @@ def write_filter_sheet(ws, groups, f1_label, f2_label, kinds):
 
 
 def build_report(f1_path, f2_path, out_path, f1_label="Dosya1", f2_label="Dosya2",
-                 progress_cb=None, write_html=False, write_pdf=False, detail_sheets=True):
+                 progress_cb=None, write_html=False, write_pdf=False, detail_sheets=True,
+                 lang=None):
     e1, e2, net1, net2 = compare(f1_path, f2_path, progress_cb=progress_cb)
 
     _progress(progress_cb, 92, "build_sheets")
@@ -1268,7 +1269,7 @@ def build_report(f1_path, f2_path, out_path, f1_label="Dosya1", f2_label="Dosya2
             f1_path=f1_path, f2_path=f2_path, f1_label=f1_label, f2_label=f2_label,
             match_count=match_count, mismatch_count=mismatch_count,
             only1_count=only1_count, only2_count=only2_count,
-            groups=groups, diffs=diffs,
+            groups=groups, diffs=diffs, lang=lang,
         )
         if write_html:
             html_path = write_html_report(base + ".html", **common)

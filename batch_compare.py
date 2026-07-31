@@ -51,7 +51,8 @@ def pair_zip_sorted(folder_a, folder_b):
 
 
 def run_batch(folder_a, folder_b, out_dir, *, mode="stem", progress_cb=None,
-              write_html=False, write_pdf=False, archive_db=None, detail_sheets=True):
+              write_html=False, write_pdf=False, archive_db=None, detail_sheets=True,
+              lang=None):
     """
     Compare paired files from two folders. Returns list of result dicts.
     mode: 'stem' (same basename) or 'zip' (sorted order).
@@ -81,6 +82,7 @@ def run_batch(folder_a, folder_b, out_dir, *, mode="stem", progress_cb=None,
             write_html=write_html,
             write_pdf=write_pdf,
             detail_sheets=detail_sheets,
+            lang=lang,
         )
         result["batch_stem"] = stem
         result["unmatched_a"] = ua

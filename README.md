@@ -6,6 +6,22 @@
 
 [![CI](https://github.com/xeyal9032/Evrak_Karsilastirma_Araci/actions/workflows/ci.yml/badge.svg)](https://github.com/xeyal9032/Evrak_Karsilastirma_Araci/actions/workflows/ci.yml)
 
+### CI nasıl çalışır?
+
+1. **Smoke** (~2 sn): i18n/PDF sözleşmesi + match-fix + kritik paketler — erken kırmızı sinyal  
+2. **Lint**: Ruff (kritik hata sınıfları)  
+3. **Full matrix**: Ubuntu/Windows × Python 3.11/3.12  
+4. **Publish report**: birleşik `CI_REPORT.md` artifact + Actions Step Summary; PR fail olursa otomatik yorum  
+
+Raporu Cursor’a vermek için: Actions → ilgili run → Artifacts → **`CI_REPORT`** indirin, sohbete ekleyin.
+
+Yerelde:
+
+```bash
+python tools/ci_runner.py --suite smoke
+python tools/ci_runner.py --suite full
+```
+
 ---
 
 ## Community vs Enterprise

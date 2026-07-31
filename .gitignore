@@ -28,6 +28,8 @@ batch_out/
 .pytest_cache/
 .coverage
 htmlcov/
+ci-artifacts/
+
 _fs.txt
 out.html
 out.pdf

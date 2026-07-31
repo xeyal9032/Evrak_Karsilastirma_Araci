@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Skip match candidates with conflicting invoice numbers in text (`ref_ids`), including clone-pass pairs
 - Match konto-recoded rows that share a long digit id in Buchungstext (Vodafone payment case)
 - Extract ref ids without gluing space-separated numbers; still match spaced vs compact beleg (`2026 130000011` ↔ `2026130000011`)
+- Escape `<`/`>` in HTML report JSON payload so Buchungstext cannot break out of the `<script>` block
+- HTML/PDF report UI strings follow selected language (`tr`/`ru`/`de`/`en`) via i18n
+- PDF uses a Unicode system font (Arial Unicode / Segoe UI / DejaVu) so Turkish and Cyrillic text no longer renders as boxes
+
+### Changed
+- CI: smoke-first contracts, Ruff lint, daily schedule, combined `CI_REPORT.md` artifact + PR failure comments (`tools/ci_runner.py`)
 
 ## [0.3.0] - 2026-07-31
 

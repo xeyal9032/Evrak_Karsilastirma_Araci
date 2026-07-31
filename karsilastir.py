@@ -249,6 +249,7 @@ class App(tk.Tk):
                     progress_cb=self._on_progress,
                     write_html=bool(self.var_html.get()),
                     write_pdf=bool(self.var_pdf.get()),
+                    lang=self.lang.get(),
                 )
                 elapsed = time.time() - t0
                 app_log.log_run_ok(result, elapsed, out_path)
@@ -261,11 +262,11 @@ class App(tk.Tk):
                     )
                 except Exception:
                     pass
-                self.after(0, lambda: self._on_compare_ok(result, out_name, out_path))
+                self.after(0, lambda r=result, n=out_name, p=out_path: self._on_compare_ok(r, n, p))
             except Exception as ex:
                 tb = traceback.format_exc()
                 app_log.log_run_err(ex, tb)
-                self.after(0, lambda: self._on_compare_err(ex, tb))
+                self.after(0, lambda e=ex, t=tb: self._on_compare_err(e, t))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -388,6 +389,7 @@ def run_cli(argv=None):
                 write_pdf=args.pdf,
                 archive_db=args.archive,
                 detail_sheets=not args.fast,
+                lang=lang,
             )
             if not args.quiet:
                 print(file=sys.stderr)
@@ -442,6 +444,7 @@ def run_cli(argv=None):
             write_html=args.html,
             write_pdf=args.pdf,
             detail_sheets=not args.fast,
+            lang=lang,
         )
     except (motor.FormatError, FileNotFoundError, OSError, PermissionError) as ex:
         if not args.quiet:

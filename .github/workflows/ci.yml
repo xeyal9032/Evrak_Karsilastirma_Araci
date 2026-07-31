@@ -5,39 +5,221 @@ on:
     branches: [main, master]
   pull_request:
     branches: [main, master]
+  schedule:
+    # Her gun 06:00 UTC - sessiz regresyon taramasi
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
 
 jobs:
-  test:
-    name: Tests (${{ matrix.os }} / Python ${{ matrix.python-version }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-        python-version: ["3.11", "3.12"]
-
+  # 1) Hizli sozlesme / kritik paket - dakika icinde fail sinyali
+  smoke:
+    name: Smoke (contracts)
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v5
 
-      - name: Set up Python
-        uses: actions/setup-python@v6
+      - uses: actions/setup-python@v6
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: "3.12"
 
-      - name: Install Tk + Xvfb (Ubuntu)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y python3-tk xvfb
+      - name: Install Tk + Xvfb + fonts
+        run: sudo apt-get update && sudo apt-get install -y python3-tk xvfb fonts-dejavu-core
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run unit & e2e tests (Linux)
-        if: runner.os == 'Linux'
-        run: xvfb-run -a python -m unittest discover -s tests -v
+      - name: Smoke suite
+        run: xvfb-run -a python tools/ci_runner.py --suite smoke --out-dir ci-artifacts/smoke
 
-      - name: Run unit & e2e tests (Windows)
+      - name: Upload smoke report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: report-smoke
+          path: ci-artifacts/smoke/
+          if-no-files-found: warn
+
+  # 2) Hizli statik kontrol
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Ruff
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff
+          ruff check .
+
+  # 3) Tam matris - smoke yesil olmadan pahali is kosmasin
+  test:
+    name: Tests (${{ matrix.os }} / Py ${{ matrix.python-version }})
+    needs: [smoke]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install Tk + Xvfb + fonts (Ubuntu)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y python3-tk xvfb fonts-dejavu-core
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Full suite (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a python tools/ci_runner.py --suite full --out-dir ci-artifacts/full
+
+      - name: Full suite (Windows)
         if: runner.os == 'Windows'
-        run: python -m unittest discover -s tests -v
+        run: python tools/ci_runner.py --suite full --out-dir ci-artifacts/full
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: report-${{ matrix.os }}-py${{ matrix.python-version }}
+          path: ci-artifacts/full/
+          if-no-files-found: warn
+
+  # 4) Tek birlestirilmis rapor + PR yorumu (fail olursa)
+  report:
+    name: Publish CI report
+    needs: [smoke, lint, test]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Download all reports
+        uses: actions/download-artifact@v4
+        with:
+          path: collected
+          merge-multiple: false
+
+      - name: Build combined report
+        id: combine
+        shell: bash
+        run: |
+          set -e
+          mkdir -p combined
+          {
+            echo "# Evrak CI — birleşik rapor"
+            echo ""
+            echo "- Workflow: \`${{ github.workflow }}\`"
+            echo "- Ref: \`${{ github.ref_name }}\`"
+            echo "- SHA: \`${{ github.sha }}\`"
+            echo "- Event: \`${{ github.event_name }}\`"
+            echo "- Actor: \`${{ github.actor }}\`"
+            echo "- Smoke: \`${{ needs.smoke.result }}\`"
+            echo "- Lint: \`${{ needs.lint.result }}\`"
+            echo "- Tests: \`${{ needs.test.result }}\`"
+            echo ""
+            VERDICT=PASS
+            if [ "${{ needs.smoke.result }}" != "success" ] || [ "${{ needs.lint.result }}" != "success" ] || [ "${{ needs.test.result }}" != "success" ]; then
+              VERDICT=FAIL
+            fi
+            echo "## Verdict: **${VERDICT}**"
+            echo "verdict=${VERDICT}" >> "$GITHUB_OUTPUT"
+            echo ""
+            echo "---"
+            echo ""
+            if [ -d collected ]; then
+              find collected -type f -name 'summary.md' | sort | while read -r f; do
+                echo ""
+                echo "## Artifact: \`$(dirname "$f" | sed 's|^collected/||')\`"
+                echo ""
+                cat "$f"
+                echo ""
+              done
+              # failures short list
+              echo "## Failure IDs"
+              echo ""
+              find collected -type f -name 'failures.txt' -print0 | xargs -0 cat 2>/dev/null | grep -v '^none$' | grep -v '^$' | sort -u | sed 's/^/- /' || echo "- (none)"
+            else
+              echo "_No artifacts downloaded._"
+            fi
+          } > combined/CI_REPORT.md
+          cat combined/CI_REPORT.md >> "$GITHUB_STEP_SUMMARY"
+          echo "Wrote combined/CI_REPORT.md"
+          head -n 40 combined/CI_REPORT.md
+
+      - name: Upload combined CI_REPORT
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: CI_REPORT
+          path: combined/CI_REPORT.md
+
+      - name: Comment on PR when failed
+        if: github.event_name == 'pull_request' && steps.combine.outputs.verdict == 'FAIL'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let body = '## CI failed — otomatik rapor\n\n';
+            try {
+              const report = fs.readFileSync('combined/CI_REPORT.md', 'utf8');
+              // PR yorumu icin makul uzunluk
+              const clipped = report.length > 60000 ? report.slice(0, 60000) + '\n\n_(truncated)_' : report;
+              body += clipped;
+            } catch (e) {
+              body += 'Rapor okunamadi. Actions → Artifacts → `CI_REPORT` indirin.\n';
+            }
+            body += `\n\n[Workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})`;
+            // Onceki bot yorumunu guncelle
+            const marker = '<!-- evrak-ci-report -->';
+            body = marker + '\n' + body;
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              per_page: 100,
+            });
+            const existing = comments.find(c => c.user.type === 'Bot' && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
+
+      - name: Fail job if suite failed
+        if: steps.combine.outputs.verdict == 'FAIL'
+        run: |
+          echo "CI verdict FAIL — see CI_REPORT artifact / Step Summary"
+          exit 1

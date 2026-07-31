@@ -29,7 +29,7 @@ def detect_system_lang():
     if not loc:
         try:
             # Fallback for older Python / unset locale
-            loc = locale.getdefaultlocale()[0] or ""  # noqa: DOC deprecated until 3.15
+            loc = locale.getdefaultlocale()[0] or ""  # deprecated until 3.15; kept as fallback
         except Exception:
             loc = ""
     loc = loc.lower().replace("-", "_")
