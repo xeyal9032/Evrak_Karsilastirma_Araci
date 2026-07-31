@@ -108,7 +108,7 @@ class TestE2EMartMismatchNotesInReport(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             out = os.path.join(tmp, "m.xlsx")
             r = motor.build_report(cpath, xpath, out, f1_label="D", f2_label="J")
-            self.assertEqual(r["mismatch_count"], 7)
+            self.assertEqual(r["mismatch_count"], 6)
             wb = openpyxl.load_workbook(out)
             ws = wb["KARSILASTIRMA-SRAVNENIE"]
             orange_notes = 0
@@ -119,7 +119,7 @@ class TestE2EMartMismatchNotesInReport(unittest.TestCase):
                     note = rows[i + 1][9].value
                     self.assertTrue(note and str(note).strip())
                     orange_notes += 1
-            self.assertEqual(orange_notes, 7)
+            self.assertEqual(orange_notes, 6)
 
 
 @unittest.skipUnless(os.path.isdir(MART), "mart yok")

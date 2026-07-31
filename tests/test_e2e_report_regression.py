@@ -19,8 +19,18 @@ import karsilastir_motor as motor
 MART = r"C:\Users\xeyal\Desktop\excel1\mart"
 USER_REPORT = r"C:\Users\xeyal\Desktop\Karsilastirma_20260731_215803.xlsx"
 
-# Bu rapordan sabitlenen baseline (manuel dogrulandi)
+# Canli motor baseline (match-fix: ref_ids + klon guvenligi)
 BASELINE = {
+    "f1_total": 689,
+    "f2_total": 812,
+    "match_count": 644,
+    "mismatch_count": 6,
+    "only1_count": 39,
+    "only2_count": 162,
+}
+
+# Eski kullanici Excel raporu (dosya degismedi) - sadece dosya okuma testleri
+USER_REPORT_BASELINE = {
     "f1_total": 689,
     "f2_total": 812,
     "match_count": 649,
@@ -82,18 +92,18 @@ class TestE2EUserReportFile(unittest.TestCase):
         ws = wb["OZET-SVODKA"]
         rows = {i: [v for v in row if v is not None] for i, row in enumerate(ws.iter_rows(values_only=True), 1)}
         # Satir 14-17 ozet sayilari (onceki denetim)
-        self.assertEqual(rows[14][1], BASELINE["match_count"])
-        self.assertEqual(rows[15][1], BASELINE["mismatch_count"])
-        self.assertEqual(rows[16][1], BASELINE["only1_count"])
-        self.assertEqual(rows[17][1], BASELINE["only2_count"])
-        self.assertEqual(rows[7][1], BASELINE["f1_total"])
-        self.assertEqual(rows[8][1], BASELINE["f2_total"])
+        self.assertEqual(rows[14][1], USER_REPORT_BASELINE["match_count"])
+        self.assertEqual(rows[15][1], USER_REPORT_BASELINE["mismatch_count"])
+        self.assertEqual(rows[16][1], USER_REPORT_BASELINE["only1_count"])
+        self.assertEqual(rows[17][1], USER_REPORT_BASELINE["only2_count"])
+        self.assertEqual(rows[7][1], USER_REPORT_BASELINE["f1_total"])
+        self.assertEqual(rows[8][1], USER_REPORT_BASELINE["f2_total"])
 
     def test_user_report_combined_row_and_color_counts(self):
         wb = openpyxl.load_workbook(USER_REPORT)
         ws = wb["KARSILASTIRMA-SRAVNENIE"]
         data = list(ws.iter_rows(min_row=2))
-        expected_rows = 2 * sum(BASELINE[k] for k in ("match_count", "mismatch_count", "only1_count", "only2_count"))
+        expected_rows = 2 * sum(USER_REPORT_BASELINE[k] for k in ("match_count", "mismatch_count", "only1_count", "only2_count"))
         self.assertEqual(len(data), expected_rows)
 
         pairs = Counter()
@@ -101,16 +111,16 @@ class TestE2EUserReportFile(unittest.TestCase):
             c1 = _fill_rgb(data[i][0])
             c2 = _fill_rgb(data[i + 1][0])
             pairs[(c1, c2)] += 1
-        self.assertEqual(pairs[("FFFF00", "FFFF00")], BASELINE["match_count"])
-        self.assertEqual(pairs[("FFC000", "FFC000")], BASELINE["mismatch_count"])
-        self.assertEqual(pairs[("FFFF00", "FF6B6B")], BASELINE["only1_count"])
-        self.assertEqual(pairs[("FF6B6B", "FFFF00")], BASELINE["only2_count"])
+        self.assertEqual(pairs[("FFFF00", "FFFF00")], USER_REPORT_BASELINE["match_count"])
+        self.assertEqual(pairs[("FFC000", "FFC000")], USER_REPORT_BASELINE["mismatch_count"])
+        self.assertEqual(pairs[("FFFF00", "FF6B6B")], USER_REPORT_BASELINE["only1_count"])
+        self.assertEqual(pairs[("FF6B6B", "FFFF00")], USER_REPORT_BASELINE["only2_count"])
 
     def test_user_report_farklar_count(self):
         wb = openpyxl.load_workbook(USER_REPORT, data_only=True)
         ws = wb["FARKLAR-RAZNICA"]
         n = sum(1 for _ in ws.iter_rows(min_row=2, values_only=True))
-        self.assertEqual(n, BASELINE["only1_count"] + BASELINE["only2_count"])
+        self.assertEqual(n, USER_REPORT_BASELINE["only1_count"] + USER_REPORT_BASELINE["only2_count"])
 
     def test_user_report_spot_known_bookings(self):
         wb = openpyxl.load_workbook(USER_REPORT, data_only=True)

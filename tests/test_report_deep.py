@@ -129,7 +129,8 @@ class TestReportSheetNames(unittest.TestCase):
                     self.assertNotIn(ch, name)
             # Iki dosya sayfasi benzersiz
             data_sheets = [s for s in wb.sheetnames if s not in (
-                "KARSILASTIRMA-SRAVNENIE", "OZET-SVODKA", "FARKLAR-RAZNICA", "HESAP FARKI-SCHETA"
+                "KARSILASTIRMA-SRAVNENIE", "OZET-SVODKA", "FARKLAR-RAZNICA", "HESAP FARKI-SCHETA",
+                "FILTRE-KIRMIZI", "FILTRE-TURUNCU",
             )]
             self.assertEqual(len(data_sheets), 2)
             self.assertEqual(len(set(s.lower() for s in data_sheets)), 2)

@@ -53,6 +53,8 @@ class TestE2EReportStructure(unittest.TestCase):
             wb = openpyxl.load_workbook(out)
             for name in (
                 "KARSILASTIRMA-SRAVNENIE",
+                "FILTRE-KIRMIZI",
+                "FILTRE-TURUNCU",
                 "OZET-SVODKA",
                 "FARKLAR-RAZNICA",
                 "HESAP FARKI-SCHETA",

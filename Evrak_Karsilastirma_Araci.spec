@@ -1,16 +1,27 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_submodules
+import os
 
 hiddenimports = []
 hiddenimports += collect_submodules('openpyxl')
 
+root = os.path.abspath('.')
+locale_datas = [
+    (os.path.join(root, 'locales', 'tr.json'), 'locales'),
+    (os.path.join(root, 'locales', 'ru.json'), 'locales'),
+    (os.path.join(root, 'locales', 'de.json'), 'locales'),
+    (os.path.join(root, 'locales', 'en.json'), 'locales'),
+]
 
 a = Analysis(
     ['karsilastir.py'],
     pathex=[],
     binaries=[],
-    datas=[],
-    hiddenimports=hiddenimports,
+    datas=locale_datas,
+    hiddenimports=hiddenimports + [
+        'i18n', 'app_log', 'karsilastir_motor',
+        'report_extra', 'batch_compare', 'archive_db',
+    ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -33,7 +44,7 @@ exe = EXE(
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=False,
+    console=True,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,

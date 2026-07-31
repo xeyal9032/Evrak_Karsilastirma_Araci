@@ -22,6 +22,7 @@ Kullandigi mantik (elle yapilan analizden gelistirildi):
 import csv
 import io
 import os
+import re
 from collections import defaultdict
 from datetime import date, datetime
 
@@ -134,9 +135,40 @@ def format_belegdatum(v):
     return s
 
 
+# Tamami bilimsel notasyon olan Belegfeld (Excel); "RE2026" gibi normal
+# numaralardaki "E2026" yanlis pozitif olmasin diye ^...$ kullanilir.
+_SCI_BELEG = re.compile(r"^[+-]?\d+([.,]\d+)?[Ee][+-]?\d+$")
+
+
 def norm_belegfeld(s):
-    s = _cell_str(s)
-    return s.replace(",", "").replace(" ", "").replace(".", "").upper()
+    """Belegfeld1 normalize. Excel bilimsel notasyonu (1,22001E+11 / 122001E+11)
+    guvenilir bir belge no DEGILDIR - bos dondurur (yanlis eslesmeyi onler)."""
+    s = _cell_str(s).strip()
+    raw = s.replace(" ", "")
+    if raw and _SCI_BELEG.match(raw.replace(",", ".")):
+        return ""
+    # "122001E+11" (noktasiz Excel kalintisi) - digit+E+digit
+    if raw and re.match(r"^\d+[Ee][+-]?\d+$", raw):
+        return ""
+    return raw.replace(",", "").replace(".", "").upper()
+
+
+def extract_ref_ids(*parts, min_len=7):
+    """Metin/beleg icindeki uzun rakam dizilerini (fatura/musteri no) cikarir.
+    Hem bosluklu orijinal hem de bosluksuz varyant taranir:
+    - '0000119564441 0020744324955' -> iki ayri no
+    - '2026 130000011' ve '2026130000011' -> ortak no yakalanir
+    Basdaki sifirlar atilir: 0000119564441 -> 119564441."""
+    ids = set()
+    for p in parts:
+        s = _cell_str(p)
+        variants = (s, re.sub(r"[\s\-_/]+", "", s))
+        for v in variants:
+            for m in re.findall(r"\d{" + str(min_len) + r",}", v):
+                norm = m.lstrip("0") or m
+                if len(norm) >= min_len:
+                    ids.add(norm)
+    return ids
 
 
 def norm_text(s):
@@ -160,6 +192,7 @@ def make_entry(line, umsatz_raw, sh, konto, gegenkonto, datum, belegfeld1, text,
         "amt": amt,
         "beleg_n": norm_belegfeld(belegfeld1_raw),
         "text_n": norm_text(text_raw),
+        "ref_ids": extract_ref_ids(belegfeld1_raw, text_raw),
         "matched": False,
         "tier": None,
         "netted": False,
@@ -333,10 +366,18 @@ def load_datev_csv(fpath):
 
 
 def load_datev_xlsx(fpath):
+    last_err = None
     for _title, rows in _xlsx_sheet_rows(fpath):
         for i, row in enumerate(rows[:30]):
             if row and _header_has_datev(row):
-                return _entries_from_datev_table(rows, fpath, i)
+                try:
+                    return _entries_from_datev_table(rows, fpath, i)
+                except FormatError as ex:
+                    # Bos header sheet: sonraki sheet'lere devam et.
+                    last_err = ex
+                    break
+    if last_err is not None:
+        raise last_err
     raise FormatError(
         f"'{fpath}' icinde DATEV baslik satiri bulunamadi.\n"
         f"В '{fpath}' не найдена строка заголовка DATEV."
@@ -393,14 +434,14 @@ def load_journal_xlsx(fpath):
                 amt=amt,
             ))
         if not entries:
-            raise FormatError(
-                f"'{fpath}' Journal dosyasinda okunabilir hicbir veri satiri bulunamadi.\n"
-                f"В Journal-файле '{fpath}' не найдено ни одной читаемой строки данных."
-            )
+            # Bos header sheet: sonraki sheet'lere devam et.
+            continue
         return entries
     raise FormatError(
-        f"'{fpath}' icinde Journal baslik satiri bulunamadi.\n"
-        f"В '{fpath}' не найдена строка заголовка Journal."
+        f"'{fpath}' icinde Journal baslik satiri bulunamadi "
+        f"(veya baslikli sheet'lerde okunabilir veri yok).\n"
+        f"В '{fpath}' не найдена строка заголовка Journal "
+        f"(или на листах с заголовком нет читаемых данных)."
     )
 
 
@@ -443,6 +484,10 @@ def canon_sh_konto(e):
 
 
 def key1(e):
+    # Bos / bilimsel-notasyon Belegfeld ile eslestirme YAPMA - aksi halde
+    # ayni tutar+hesap+tarihteki FARKLI kayitlar yanlis eslesir.
+    if not e["beleg_n"]:
+        return None
     sh, konto = canon_sh_konto(e)
     return (e["amt"], sh, konto, e["datum"], e["beleg_n"])
 
@@ -509,20 +554,10 @@ def match_tier(pool1, pool2, keyfunc, tier_name, keyfunc2=None, kind="MATCH", st
     ama gercekte FARKLI faturalara ait birden fazla kayit, liste sirasina
     gore RASTGELE birbirine eslenir (yanlis pozitif).
 
-    Если keyfunc2 не задан, обе стороны используют одну функцию. Если задан,
-    для pool1 используется keyfunc, для pool2 - keyfunc2 - это нужно для
-    случаев, когда поля Belegfeld1/Buchungstext поменялись местами между
-    файлами (как в примере STELLANTIS RE2026-0363).
-
-    kind: "MATCH" (жёлтый) или "MISMATCH" (оранжевый). Значение пишется
-    напрямую в entry["pair_kind"] - раскраска НЕ зависит от текста имени
-    уровня (tier_name).
-
-    strict=True: сопоставление делается ТОЛЬКО если с обеих сторон РОВНО
-    по 1 кандидату на ключ. Критично важно для уровней, игнорирующих Umsatz
-    (значение отличается, сомнительное) - иначе несколько РАЗНЫХ по сути
-    записей с общим шаблонным текстом (напр. "Zahlungseing.: diverse
-    Rechnungen") сопоставятся друг с другом СЛУЧАЙНО, по порядку в списке."""
+    Ortak uzun fatura/referans no'lari (ref_ids) VARSA ve kesisimleri bossa,
+    bu aday cifti ATLENMEZ - ayni tutar+hesap+tarihteki farkli Vodafone
+    faturalari gibi yanlis eslesmeleri engeller.
+    """
     kf2 = keyfunc2 or keyfunc
     d1 = defaultdict(list)
     for e in pool1:
@@ -540,10 +575,29 @@ def match_tier(pool1, pool2, keyfunc, tier_name, keyfunc2=None, kind="MATCH", st
         l2 = d2.get(k)
         if not l2:
             continue
-        if strict and (len(l1) != 1 or len(l2) != 1):
-            continue
-        n = min(len(l1), len(l2))
-        for a, b in zip(l1[:n], l2[:n]):
+        # ref_id catismasi olanlari ele
+        pairs = []
+        used2 = set()
+        for a in l1:
+            if a["matched"]:
+                continue
+            for b in l2:
+                if b["matched"] or id(b) in used2:
+                    continue
+                ia = a.get("ref_ids") or set()
+                ib = b.get("ref_ids") or set()
+                if ia and ib and ia.isdisjoint(ib):
+                    continue
+                pairs.append((a, b))
+                used2.add(id(b))
+                break
+        if strict:
+            # strict: anahtarda her iki tarafta da filtreden sonra tek aday
+            if len(l1) != 1 or len(l2) != 1:
+                continue
+            if len(pairs) != 1:
+                continue
+        for a, b in pairs:
             a["matched"] = True
             a["tier"] = tier_name
             a["pair"] = b
@@ -588,8 +642,13 @@ def substring_id_tier(pool1, pool2, tier_name, min_len=5):
                 (len(beleg1) >= min_len and beleg1 in c["text"].upper())
                 or (len(beleg2) >= min_len and beleg2 in e["text"].upper())
             )
-            if hit:
-                hits.append(c)
+            if not hit:
+                continue
+            ia = e.get("ref_ids") or set()
+            ib = c.get("ref_ids") or set()
+            if ia and ib and ia.isdisjoint(ib):
+                continue
+            hits.append(c)
         # Sadece TEK bir aday substring ile eslesiyorsa esle - birden fazla
         # aday varsa (belirsiz) HICBIRINI eslestirme (yanlis pozitif riski).
         # Сопоставляем, только если substring совпал РОВНО с одним
@@ -607,10 +666,54 @@ def substring_id_tier(pool1, pool2, tier_name, min_len=5):
             c["pair_kind"] = "MATCH"
 
 
-def compare(f1_path, f2_path):
+def shared_ref_id_tier(pool1, pool2, tier_name, min_len=7):
+    """Umsatz+SH+Belegdatum ayni iken Buchungstext/Belegfeld icindeki ortak
+    uzun rakam kimligi (fatura no vb.) ile eslestir. Konto farkli olabilir
+    (yeniden kodlama). Bilimsel-notasyon Belegfeld yuzunden key1'in
+    kacirdigi / yanlis esledigi Vodafone tipi kayitlari duzeltir.
+    Belirsiz (birden fazla aday) durumlarda eslestirmez."""
+    by_amtdate = defaultdict(list)
+    for e in pool2:
+        sh, _ = canon_sh_konto(e)
+        by_amtdate[(e["amt"], sh, e["datum"])].append(e)
+    for e in pool1:
+        if e["matched"]:
+            continue
+        ids = e.get("ref_ids") or extract_ref_ids(e["belegfeld1"], e["text"], min_len=min_len)
+        if not ids:
+            continue
+        sh, _ = canon_sh_konto(e)
+        hits = []
+        for c in by_amtdate.get((e["amt"], sh, e["datum"]), []):
+            if c["matched"]:
+                continue
+            ids2 = c.get("ref_ids") or extract_ref_ids(c["belegfeld1"], c["text"], min_len=min_len)
+            if ids & ids2:
+                hits.append(c)
+        if len(hits) == 1:
+            c = hits[0]
+            e["matched"] = True
+            e["tier"] = tier_name
+            e["pair"] = c
+            e["pair_kind"] = "MATCH"
+            c["matched"] = True
+            c["tier"] = tier_name
+            c["pair"] = e
+            c["pair_kind"] = "MATCH"
+
+
+def _progress(progress_cb, percent, stage):
+    if progress_cb is not None:
+        progress_cb(int(percent), stage)
+
+
+def compare(f1_path, f2_path, progress_cb=None):
+    _progress(progress_cb, 5, "load1")
     e1 = load(f1_path)
+    _progress(progress_cb, 15, "load2")
     e2 = load(f2_path)
 
+    _progress(progress_cb, 25, "netting")
     net1 = net_self_cancelling(e1)
     net2 = net_self_cancelling(e2)
     for e in e1 + e2:
@@ -618,14 +721,17 @@ def compare(f1_path, f2_path):
             e["matched"] = True
             e["tier"] = "IC-NETLESME (dosya icinde mukerrer+iptal, net sifir)"
 
+    _progress(progress_cb, 35, "match_tier1")
     rem1 = [e for e in e1 if not e["matched"]]
     rem2 = [e for e in e2 if not e["matched"]]
     match_tier(rem1, rem2, key1, "TAM ESLESME / ПОЛНОЕ СОВПАДЕНИЕ (Belegfeld1+Konto+Tutar/Счёт+Сумма)", kind="MATCH", strict=True)
 
+    _progress(progress_cb, 45, "match_tier2")
     rem1 = [e for e in e1 if not e["matched"]]
     rem2 = [e for e in e2 if not e["matched"]]
     match_tier(rem1, rem2, key2, "Konto+Tutar+Metin / Счёт+Сумма+Текст", kind="MATCH", strict=True)
 
+    _progress(progress_cb, 52, "match_tier3")
     rem1 = [e for e in e1 if not e["matched"]]
     rem2 = [e for e in e2 if not e["matched"]]
     match_tier(rem1, rem2, key3, "Yeniden-kodlanmis / Перекодировано (Konto degisti / счёт изменён)", kind="MATCH", strict=True)
@@ -669,6 +775,10 @@ def compare(f1_path, f2_path):
                 continue
             n = min(len(l1), len(l2))
             for a, b in zip(l1[:n], l2[:n]):
+                ia = a.get("ref_ids") or set()
+                ib = b.get("ref_ids") or set()
+                if ia and ib and ia.isdisjoint(ib):
+                    continue
                 a["matched"] = True
                 a["tier"] = f"{name} (klon kayit / клон-запись)"
                 a["pair"] = b
@@ -688,10 +798,19 @@ def compare(f1_path, f2_path):
     rem2 = [e for e in e2 if not e["matched"]]
     substring_id_tier(rem1, rem2, "Yeniden-kodlanmis / Перекодировано (Belegfeld1 metne tasinmis / номер переехал в текст)")
 
+    # Ortak fatura/referans no (metin icindeki uzun rakamlar) + tutar+tarih
+    rem1 = [e for e in e1 if not e["matched"]]
+    rem2 = [e for e in e2 if not e["matched"]]
+    shared_ref_id_tier(
+        rem1, rem2,
+        "REF-ID ESLESME / СОВПАДЕНИЕ ПО НОМЕРУ (metindeki fatura/referans no)",
+    )
+
     # DEGER-FARKI: ayni kimlik (Belegfeld1/Metin+Konto+Tarih) ama Umsatz farkli
     # -> "ayni kayit ama yanlis yazilmis" (STELLANTIS RE2026-0363 tipi hata)
     # ЗНАЧЕНИЕ ОТЛИЧАЕТСЯ: та же идентичность, но другая сумма
     # -> "та же запись, но написана неверно"
+    _progress(progress_cb, 68, "match_value")
     rem1 = [e for e in e1 if not e["matched"]]
     rem2 = [e for e in e2 if not e["matched"]]
     match_tier(rem1, rem2, key_value1, "DEGER-FARKI / ЗНАЧЕНИЕ ОТЛИЧАЕТСЯ (Belegfeld1+Konto+Tarih ayni, Umsatz farkli)", kind="MISMATCH", strict=True)
@@ -705,6 +824,7 @@ def compare(f1_path, f2_path):
     # Buchungstext="RE2026-0363" olabilir). Her iki yonde de dene.
     # Перекрёстное сопоставление полей: в одном файле Belegfeld1/Buchungstext
     # могут быть поменяны местами. Пробуем в обе стороны.
+    _progress(progress_cb, 78, "match_cross")
     rem1 = [e for e in e1 if not e["matched"]]
     rem2 = [e for e in e2 if not e["matched"]]
     match_tier(rem1, rem2, key_value1, "DEGER-FARKI / ЗНАЧЕНИЕ ОТЛИЧАЕТСЯ (capraz alan / перекрёстное поле)", keyfunc2=key_value2, kind="MISMATCH", strict=True)
@@ -713,10 +833,12 @@ def compare(f1_path, f2_path):
     rem2 = [e for e in e2 if not e["matched"]]
     match_tier(rem1, rem2, key_value2, "DEGER-FARKI / ЗНАЧЕНИЕ ОТЛИЧАЕТСЯ (capraz alan / перекрёстное поле)", keyfunc2=key_value1, kind="MISMATCH", strict=True)
 
+    _progress(progress_cb, 85, "match_tier4")
     rem1 = [e for e in e1 if not e["matched"]]
     rem2 = [e for e in e2 if not e["matched"]]
     match_tier(rem1, rem2, key4, "SUPHELI-ESLESME / СОМНИТЕЛЬНОЕ (sadece tutar+konto+tarih / только сумма+счёт+дата)", kind="MISMATCH", strict=True)
 
+    _progress(progress_cb, 90, "compare_done")
     return e1, e2, net1, net2
 
 
@@ -915,6 +1037,7 @@ COMBINED_HEADERS = [
     "Belegfeld 1 / Номер документа",
     "Buchungstext / Текст проводки",
     "Not / Примечание",
+    "Durum / Status",
 ]
 
 THIN_TOP = Border(top=Side(style="thin", color="808080"))
@@ -924,13 +1047,13 @@ def write_combined_sheet(ws, groups, f1_label, f2_label):
     write_header(ws, COMBINED_HEADERS)
     row = 2
 
-    def emit(entry, source_label, note, fill, top_border):
+    def emit(entry, source_label, note, fill, top_border, status):
         nonlocal row
         if entry is None:
-            values = [source_label, "", "", "", "", "", "", "", "", note]
+            values = [source_label, "", "", "", "", "", "", "", "", note, status]
         else:
             values = [source_label, entry["line"], entry["umsatz"], entry["sh"], entry["konto"],
-                      entry["gegenkonto"], entry["datum"], entry["belegfeld1"], entry["text"], note]
+                      entry["gegenkonto"], entry["datum"], entry["belegfeld1"], entry["text"], note, status]
         for c, v in enumerate(values, start=1):
             cell = ws.cell(row=row, column=c, value=v)
             cell.fill = fill
@@ -941,34 +1064,85 @@ def write_combined_sheet(ws, groups, f1_label, f2_label):
     for g in groups:
         kind = g["kind"]
         if kind == "MATCH":
-            emit(g["e1"], f1_label, "", YELLOW, True)
-            emit(g["e2"], f2_label, "", YELLOW, False)
+            emit(g["e1"], f1_label, "", YELLOW, True, "MATCH")
+            emit(g["e2"], f2_label, "", YELLOW, False, "MATCH")
         elif kind == "MISMATCH":
             note = diff_note(g["e1"], g["e2"])
-            emit(g["e1"], f1_label, "", ORANGE, True)
-            emit(g["e2"], f2_label, note, ORANGE, False)
+            emit(g["e1"], f1_label, "", ORANGE, True, "MISMATCH")
+            emit(g["e2"], f2_label, note, ORANGE, False, "MISMATCH")
         elif kind == "ONLY1":
-            emit(g["e1"], f1_label, "", YELLOW, True)
-            emit(None, f2_label, "EKSIK / ОТСУТСТВУЕТ", RED, False)
+            emit(g["e1"], f1_label, "", YELLOW, True, "ONLY1")
+            emit(None, f2_label, "EKSIK / ОТСУТСТВУЕТ", RED, False, "ONLY1")
         elif kind == "ONLY2":
-            emit(None, f1_label, "EKSIK / ОТСУТСТВУЕТ", RED, True)
-            emit(g["e2"], f2_label, "", YELLOW, False)
+            emit(None, f1_label, "EKSIK / ОТСУТСТВУЕТ", RED, True, "ONLY2")
+            emit(g["e2"], f2_label, "", YELLOW, False, "ONLY2")
 
-    widths = [16, 7, 12, 10, 9, 11, 11, 26, 50, 45]
+    widths = [16, 7, 12, 10, 9, 11, 11, 26, 50, 45, 12]
     for i, w in enumerate(widths, start=1):
         ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
     ws.freeze_panes = "A2"
+    if row > 2:
+        ws.auto_filter.ref = f"A1:K{row - 1}"
 
 
-def build_report(f1_path, f2_path, out_path, f1_label="Dosya1", f2_label="Dosya2"):
-    e1, e2, net1, net2 = compare(f1_path, f2_path)
+def write_filter_sheet(ws, groups, f1_label, f2_label, kinds):
+    """Combined-sheet satirlari arasindan sadece secili Durum turlerini yazar."""
+    write_header(ws, COMBINED_HEADERS)
+    row = 2
 
+    def emit(entry, source_label, note, fill, top_border, status):
+        nonlocal row
+        if entry is None:
+            values = [source_label, "", "", "", "", "", "", "", "", note, status]
+        else:
+            values = [source_label, entry["line"], entry["umsatz"], entry["sh"], entry["konto"],
+                      entry["gegenkonto"], entry["datum"], entry["belegfeld1"], entry["text"], note, status]
+        for c, v in enumerate(values, start=1):
+            cell = ws.cell(row=row, column=c, value=v)
+            cell.fill = fill
+            if top_border:
+                cell.border = THIN_TOP
+        row += 1
+
+    for g in groups:
+        kind = g["kind"]
+        if kind not in kinds:
+            continue
+        if kind == "MISMATCH":
+            note = diff_note(g["e1"], g["e2"])
+            emit(g["e1"], f1_label, "", ORANGE, True, "MISMATCH")
+            emit(g["e2"], f2_label, note, ORANGE, False, "MISMATCH")
+        elif kind == "ONLY1":
+            emit(g["e1"], f1_label, "", YELLOW, True, "ONLY1")
+            emit(None, f2_label, "EKSIK / ОТСУТСТВУЕТ", RED, False, "ONLY1")
+        elif kind == "ONLY2":
+            emit(None, f1_label, "EKSIK / ОТСУТСТВУЕТ", RED, True, "ONLY2")
+            emit(g["e2"], f2_label, "", YELLOW, False, "ONLY2")
+
+    widths = [16, 7, 12, 10, 9, 11, 11, 26, 50, 45, 12]
+    for i, w in enumerate(widths, start=1):
+        ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+    ws.freeze_panes = "A2"
+    if row > 2:
+        ws.auto_filter.ref = f"A1:K{row - 1}"
+
+
+def build_report(f1_path, f2_path, out_path, f1_label="Dosya1", f2_label="Dosya2",
+                 progress_cb=None, write_html=False, write_pdf=False, detail_sheets=True):
+    e1, e2, net1, net2 = compare(f1_path, f2_path, progress_cb=progress_cb)
+
+    _progress(progress_cb, 92, "build_sheets")
     wb = openpyxl.Workbook()
 
     ws_combined = wb.active
     ws_combined.title = "KARSILASTIRMA-SRAVNENIE"
     groups = build_combined_rows(e1, e2)
     write_combined_sheet(ws_combined, groups, f1_label, f2_label)
+
+    ws_red = wb.create_sheet("FILTRE-KIRMIZI")
+    write_filter_sheet(ws_red, groups, f1_label, f2_label, {"ONLY1", "ONLY2"})
+    ws_orange = wb.create_sheet("FILTRE-TURUNCU")
+    write_filter_sheet(ws_orange, groups, f1_label, f2_label, {"MISMATCH"})
 
     ws0 = wb.create_sheet("OZET-SVODKA")
 
@@ -1036,47 +1210,80 @@ def build_report(f1_path, f2_path, out_path, f1_label="Dosya1", f2_label="Dosya2
     for col, w in zip("ABCD", [55, 20, 40, 40]):
         ws0.column_dimensions[col].width = w
 
-    taken_sheet_names = {"karsilastirma-sravnenie", "ozet-svodka", "farklar-raznica", "hesap farki-scheta"}
-    sheet1_name = sanitize_sheet_name(f1_label, "Dosya1-Fayl1", taken_sheet_names)
-    sheet2_name = sanitize_sheet_name(f2_label, "Dosya2-Fayl2", taken_sheet_names)
-
-    ws1 = wb.create_sheet(sheet1_name)
-    write_entry_sheet(ws1, e1)
-    ws2 = wb.create_sheet(sheet2_name)
-    write_entry_sheet(ws2, e2)
-
-    ws3 = wb.create_sheet("FARKLAR-RAZNICA")
-    write_header(ws3, ["Kaynak Dosya / Исходный файл"] + HEADERS)
-    for label, entries in ((f1_label, e1), (f2_label, e2)):
-        for e in entries:
-            if not e["matched"]:
-                ws3.append([label, e["line"], e["umsatz"], e["sh"], e["konto"], e["gegenkonto"], e["datum"], e["belegfeld1"], e["text"]])
-                for c in range(1, 10):
-                    ws3.cell(row=ws3.max_row, column=c).fill = RED
-    widths3 = [18, 7, 12, 10, 9, 11, 11, 26, 55]
-    for i, w in enumerate(widths3, start=1):
-        ws3.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
-    ws3.freeze_panes = "A2"
-
-    ws4 = wb.create_sheet("HESAP FARKI-SCHETA")
-    write_header(ws4, ["Konto / Счёт", f"Bakiye / Баланс ({f1_label})", f"Bakiye / Баланс ({f2_label})", "Fark / Разница", f"Kayit / Записей ({f1_label})", f"Kayit / Записей ({f2_label})"])
     diffs = account_balance_diff(e1, e2)
-    for k, b1, b2, d, c1, c2 in diffs:
-        ws4.append([k, b1, b2, d, c1, c2])
-        if abs(d) >= 1000:
-            for c in range(1, 7):
-                ws4.cell(row=ws4.max_row, column=c).fill = RED
-    for i, w in enumerate([10, 16, 16, 14, 12, 12], start=1):
-        ws4.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
-    ws4.freeze_panes = "A2"
+
+    if detail_sheets:
+        taken_sheet_names = {
+            "karsilastirma-sravnenie", "filtre-kirmizi", "filtre-turuncu",
+            "ozet-svodka", "farklar-raznica", "hesap farki-scheta",
+        }
+        sheet1_name = sanitize_sheet_name(f1_label, "Dosya1-Fayl1", taken_sheet_names)
+        sheet2_name = sanitize_sheet_name(f2_label, "Dosya2-Fayl2", taken_sheet_names)
+
+        ws1 = wb.create_sheet(sheet1_name)
+        write_entry_sheet(ws1, e1)
+        ws2 = wb.create_sheet(sheet2_name)
+        write_entry_sheet(ws2, e2)
+
+        ws3 = wb.create_sheet("FARKLAR-RAZNICA")
+        write_header(ws3, ["Kaynak Dosya / Исходный файл"] + HEADERS)
+        for label, entries in ((f1_label, e1), (f2_label, e2)):
+            for e in entries:
+                if not e["matched"]:
+                    ws3.append([label, e["line"], e["umsatz"], e["sh"], e["konto"], e["gegenkonto"], e["datum"], e["belegfeld1"], e["text"]])
+                    for c in range(1, 10):
+                        ws3.cell(row=ws3.max_row, column=c).fill = RED
+        widths3 = [18, 7, 12, 10, 9, 11, 11, 26, 55]
+        for i, w in enumerate(widths3, start=1):
+            ws3.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+        ws3.freeze_panes = "A2"
+
+        ws4 = wb.create_sheet("HESAP FARKI-SCHETA")
+        write_header(ws4, ["Konto / Счёт", f"Bakiye / Баланс ({f1_label})", f"Bakiye / Баланс ({f2_label})", "Fark / Разница", f"Kayit / Записей ({f1_label})", f"Kayit / Записей ({f2_label})"])
+        for k, b1, b2, d, c1, c2 in diffs:
+            ws4.append([k, b1, b2, d, c1, c2])
+            if abs(d) >= 1000:
+                for c in range(1, 7):
+                    ws4.cell(row=ws4.max_row, column=c).fill = RED
+        for i, w in enumerate([10, 16, 16, 14, 12, 12], start=1):
+            ws4.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+        ws4.freeze_panes = "A2"
+    else:
+        # Hizli yol: sadece hesap farki ozeti (detay sayfalari yok)
+        ws4 = wb.create_sheet("HESAP FARKI-SCHETA")
+        write_header(ws4, ["Konto / Счёт", f"Bakiye / Баланс ({f1_label})", f"Bakiye / Баланс ({f2_label})", "Fark / Разница", f"Kayit / Записей ({f1_label})", f"Kayit / Записей ({f2_label})"])
+        for k, b1, b2, d, c1, c2 in diffs:
+            ws4.append([k, b1, b2, d, c1, c2])
+        for i, w in enumerate([10, 16, 16, 14, 12, 12], start=1):
+            ws4.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+        ws4.freeze_panes = "A2"
 
     wb.save(out_path)
+
+    html_path = pdf_path = None
+    base, _ = os.path.splitext(out_path)
+    if write_html or write_pdf:
+        from report_extra import write_html_report, write_pdf_report
+        common = dict(
+            f1_path=f1_path, f2_path=f2_path, f1_label=f1_label, f2_label=f2_label,
+            match_count=match_count, mismatch_count=mismatch_count,
+            only1_count=only1_count, only2_count=only2_count,
+            groups=groups, diffs=diffs,
+        )
+        if write_html:
+            html_path = write_html_report(base + ".html", **common)
+        if write_pdf:
+            pdf_path = write_pdf_report(base + ".pdf", **common)
+
+    _progress(progress_cb, 100, "done")
     return {
         "f1_total": len(e1), "f2_total": len(e2),
         "f1_red": red1, "f2_red": red2,
         "net1": net1, "net2": net2,
         "diffs": diffs,
         "out_path": out_path,
+        "html_path": html_path,
+        "pdf_path": pdf_path,
         "match_count": match_count,
         "mismatch_count": mismatch_count,
         "only1_count": only1_count,

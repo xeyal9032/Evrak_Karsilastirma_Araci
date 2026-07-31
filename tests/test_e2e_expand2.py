@@ -103,7 +103,7 @@ class TestE2EMartTripleRun(unittest.TestCase):
                 ))
         self.assertEqual(counts[0], counts[1])
         self.assertEqual(counts[1], counts[2])
-        self.assertEqual(counts[0], (649, 7, 33, 156, 689, 812))
+        self.assertEqual(counts[0], (644, 6, 39, 162, 689, 812))
 
 
 class TestE2EEntrySheetStatusColumn(unittest.TestCase):

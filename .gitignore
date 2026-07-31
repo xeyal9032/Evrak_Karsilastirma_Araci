@@ -22,6 +22,14 @@ desktop.ini
 
 # Local / temp
 *.log
+logs/
+data/
+batch_out/
 .pytest_cache/
 .coverage
 htmlcov/
+_fs.txt
+out.html
+out.pdf
+demo_a/
+demo_b/

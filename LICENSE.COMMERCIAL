@@ -1,0 +1,39 @@
+Evrak Karsilastirma Araci — Commercial / Enterprise License (Draft)
+
+Copyright (c) 2026 Evrak Karsilastirma Araci
+
+This document is a draft framework for future paid Enterprise offerings.
+It does not grant rights by itself until a signed agreement is executed.
+
+1. Scope
+   Enterprise features may include (planned):
+   - Batch and folder comparison of many file pairs
+   - Persistence of results to SQL databases
+   - PDF/HTML corporate report packs
+   - Signed Windows binaries and priority support (SLA)
+
+2. Community Edition
+   The open-source Community Edition remains available under the MIT License
+   in LICENSE. Community Edition does not include Enterprise features.
+
+3. Grant
+   Upon payment and a signed order form / license agreement, the Licensor
+   grants the Licensee a non-exclusive, non-transferable right to use the
+   Enterprise Edition according to the seat / site / volume terms stated in
+   that agreement.
+
+4. Restrictions
+   Unless expressly allowed in the signed agreement, the Licensee may not:
+   - Redistribute Enterprise binaries or license keys
+   - Remove or bypass license checks
+   - Use Enterprise features beyond the purchased capacity
+
+5. Warranty and liability
+   Commercial warranty and liability caps are defined only in the signed
+   agreement. This draft provides no warranty.
+
+6. Contact
+   For Enterprise licensing inquiries, open a GitHub Discussion or contact
+   the repository maintainers.
+
+This draft may be replaced by a formal agreement without notice.
