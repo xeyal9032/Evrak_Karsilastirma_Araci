@@ -1,0 +1,5 @@
+EXTF;700;21;Buchungsstapel;1;20260101;20260131;;;;;;;
+Umsatz (ohne Soll/Haben-Kz);Soll/Haben-Kennzeichen;WKZ Umsatz;Kurs;Basis-Umsatz;WKZ Basis-Umsatz;Konto;Gegenkonto (ohne BU-Schluessel);BU-Schlüssel;Belegdatum;Belegfeld 1;Belegfeld 2;Skonto;Buchungstext
+1000,00;S;EUR;;;;1200;8400;;1501;RE-1001;;;Miete Januar
+999,99;H;EUR;;;;8400;1200;;2001;RE-2002;;;Wareneinkauf
+750,00;S;EUR;;;;1700;1800;;1102;RE-ONLY2;;;Nur in Datei 2
