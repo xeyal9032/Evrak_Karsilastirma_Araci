@@ -31,6 +31,17 @@ from karsilastir import App, _wants_cli, run_cli
 from tests.helpers_datev import DATEV_HEADER_LONG, drow, write_datev_csv, write_datev_xlsx
 
 
+def _tk_display_available():
+    import tkinter as tk
+
+    try:
+        root = tk.Tk()
+        root.destroy()
+        return True
+    except tk.TclError:
+        return False
+
+
 def _rgb(cell):
     fill = cell.fill
     if not fill or not fill.fgColor or not fill.fgColor.rgb:
@@ -433,6 +444,7 @@ class TestI18nDeep(unittest.TestCase):
                 self.assertTrue(str(val).strip(), msg=f"{lang}:{key}")
 
 
+@unittest.skipUnless(_tk_display_available(), "Tk display unavailable")
 class TestGuiLangDeep(unittest.TestCase):
     def test_app_language_switch_updates_labels(self):
         app = App()
