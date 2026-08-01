@@ -4,6 +4,7 @@ import datetime
 import os
 import sys
 import threading
+import time
 import traceback
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
