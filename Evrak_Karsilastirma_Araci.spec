@@ -24,7 +24,7 @@ a = Analysis(
     datas=locale_datas,
     hiddenimports=hiddenimports + [
         'i18n', 'app_log', 'paths', 'karsilastir_motor',
-        'report_extra', 'batch_compare', 'archive_db',
+        'report_extra', 'batch_compare', 'archive_db', 'karsilastir_gui',
     ],
     hookspath=[],
     hooksconfig={},

@@ -5,6 +5,22 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Frozen-safe `paths.py` (`app_root` / `resource_root`); Excel report i18n (`excel_*`)
+- GUI: Fast / Archive / Batch folders / Archive browser; soft-warn for HTML/PDF and archive
+- Repo e2e fixtures under `tests/fixtures/excel1/` (+ `fixture_paths.py`)
+- Soft-warn tests (`tests/test_report_soft_warn.py`)
+
+### Fixed
+- `LICENSE` Community/Enterprise note aligned with README (batch/SQL/PDF are MIT)
+- Archive default unified to `app_root()/data/compare_archive.db` (CLI/GUI/batch/browser)
+- ONLY1/ONLY2 rows both red (legend-consistent); Journal keeps `0,00` like DATEV
+- `norm_amount` English decimals (`12.34`); batch archive failures no longer abort the run
+- Windowed exe allocates/attaches a console for CLI I/O; PyInstaller `upx=False`
+- Tkinter imported only for GUI (`karsilastir_gui.py`) so headless CLI need not load Tk
+
 ## [0.3.1] - 2026-08-01
 
 ### Fixed

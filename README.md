@@ -179,9 +179,11 @@ Katkı: [CONTRIBUTING.md](CONTRIBUTING.md) · SSS: [docs/FAQ.md](docs/FAQ.md) ·
 
 ```text
 Evrak_Karsilastirma_Araci/
-├── karsilastir.py          # GUI + CLI giriş
+├── karsilastir.py          # CLI giriş (+ GUI lazy import)
+├── karsilastir_gui.py      # Tkinter GUI
 ├── cli.py                  # CLI kısayolu
 ├── karsilastir_motor.py    # Algılama + karşılaştırma + Excel
+├── paths.py                # app_root / resource_root (frozen-safe)
 ├── report_extra.py         # HTML / PDF özet
 ├── batch_compare.py        # Klasör toplu karşılaştırma
 ├── archive_db.py           # SQLite arşiv

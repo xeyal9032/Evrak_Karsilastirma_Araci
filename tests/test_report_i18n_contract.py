@@ -306,9 +306,11 @@ class TestGuiAndCliLangWiringSource(unittest.TestCase):
     """GUI/CLI kaynak kodu lang parametresini unutmamali."""
 
     def test_gui_passes_lang_to_build_report(self):
-        src = _read(os.path.join(ROOT, "karsilastir.py"))
-        self.assertIn("lang=self.lang.get()", src)
+        # GUI lives in karsilastir_gui.py; lang is snapshotted on the main thread.
+        src = _read(os.path.join(ROOT, "karsilastir_gui.py"))
+        self.assertIn("lang = self.lang.get()", src)
         self.assertIn("lang=lang", src)
+        self.assertIn("build_report(", src)
 
     def test_batch_passes_lang(self):
         src = _read(os.path.join(ROOT, "batch_compare.py"))

@@ -38,12 +38,16 @@ Pairs files by matching basename (`--batch-mode stem`, default) or sorted zip or
 ## SQLite archive?
 
 ```bash
-python karsilastir.py a.csv b.xlsx --archive data/compare_archive.db
+# Default: <app_root>/data/compare_archive.db (same as GUI Archive browser)
+python karsilastir.py a.csv b.xlsx --archive
+
+# Or an explicit path:
+python karsilastir.py a.csv b.xlsx --archive D:\backup\compare.db
 ```
 
 GUI: **Save to archive** checkbox (default on) and **Archive…** to browse recent runs.
-Archive DB defaults to `data/compare_archive.db` next to the app (source tree or exe
-folder — same path for single compare, batch, CLI `--archive`, and Archive browser).
+Archive DB defaults next to the app (source tree or exe folder) — same path for single
+compare, batch, CLI `--archive` without a path, and Archive browser.
 Archive failures show a warning (they no longer fail silently).
 
 ## Where is the report saved?
