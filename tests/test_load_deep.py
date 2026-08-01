@@ -62,7 +62,7 @@ class TestLoadSkips(unittest.TestCase):
             self.assertEqual(len(e), 1)
             self.assertEqual(e[0]["belegfeld1"], "Y")
 
-    def test_journal_skips_zero_and_missing_accounts(self):
+    def test_journal_keeps_zero_skips_missing_accounts(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "j.xlsx")
             write_journal_xlsx(path, [
@@ -71,10 +71,12 @@ class TestLoadSkips(unittest.TestCase):
                 (datetime(2026, 1, 3), "OK", "good", 50.5, 1000, 2000),
             ])
             e = motor.load(path)
-            self.assertEqual(len(e), 1)
-            self.assertEqual(e[0]["belegfeld1"], "OK")
-            self.assertEqual(e[0]["amt"], 50.5)
-            self.assertEqual(e[0]["umsatz"], "50,50")
+            self.assertEqual(len(e), 2)
+            belegs = {x["belegfeld1"] for x in e}
+            self.assertEqual(belegs, {"Z0", "OK"})
+            zero = next(x for x in e if x["belegfeld1"] == "Z0")
+            self.assertEqual(zero["amt"], 0.0)
+            self.assertEqual(zero["umsatz"], "0,00")
 
 
 class TestLoadEncoding(unittest.TestCase):

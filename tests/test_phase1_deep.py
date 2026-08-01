@@ -173,7 +173,7 @@ class TestFilterSheetsDeep(unittest.TestCase):
             self.assertEqual(sum(1 for _ in wb["FILTRE-KIRMIZI"].iter_rows(min_row=2)), 0)
             self.assertEqual(sum(1 for _ in wb["FILTRE-TURUNCU"].iter_rows(min_row=2)), 0)
             # Bos filtre sayfasinda auto_filter opsiyonel; header yine var
-            self.assertEqual(wb["FILTRE-KIRMIZI"].cell(1, 11).value, "Durum / Status")
+            self.assertEqual(wb["FILTRE-KIRMIZI"].cell(1, 11).value, "Durum")
 
     def test_filtre_subset_of_combined_belegs(self):
         """Filtre sayfalarindaki Belegfeld1 degerleri combined sheet'te ayni Durum ile var."""

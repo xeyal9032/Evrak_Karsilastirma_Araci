@@ -5,16 +5,23 @@ Copyright (c) 2026 Evrak Karsilastirma Araci
 This document is a draft framework for future paid Enterprise offerings.
 It does not grant rights by itself until a signed agreement is executed.
 
-1. Scope
-   Enterprise features may include (planned):
-   - Batch and folder comparison of many file pairs
-   - Persistence of results to SQL databases
-   - PDF/HTML corporate report packs
-   - Signed Windows binaries and priority support (SLA)
+1. Community Edition (MIT — see LICENSE)
+   The open-source Community Edition already includes, under the MIT License:
+   - Single-pair GUI / CLI comparison
+   - Excel + HTML/PDF reports and 4 languages (TR / RU / DE / EN)
+   - Folder / batch comparison (`--batch`)
+   - SQLite result archive (`--archive`)
+   Community Edition remains free to use, modify, and redistribute under MIT.
 
-2. Community Edition
-   The open-source Community Edition remains available under the MIT License
-   in LICENSE. Community Edition does not include Enterprise features.
+2. Scope of Enterprise (planned, paid)
+   Enterprise offerings may add commercial value on top of Community, for example:
+   - Signed Windows binaries and installers
+   - Priority support / SLA
+   - Corporate deployment packaging and volume licensing
+   - Optional hosted / multi-seat management (if offered)
+
+   Batch comparison, SQLite archive, and HTML/PDF reports are NOT reserved
+   exclusively for Enterprise — they ship in Community under MIT.
 
 3. Grant
    Upon payment and a signed order form / license agreement, the Licensor
@@ -30,7 +37,8 @@ It does not grant rights by itself until a signed agreement is executed.
 
 5. Warranty and liability
    Commercial warranty and liability caps are defined only in the signed
-   agreement. This draft provides no warranty.
+   agreement. This draft provides no warranty. Community Edition remains
+   under the MIT License disclaimer.
 
 6. Contact
    For Enterprise licensing inquiries, open a GitHub Discussion or contact

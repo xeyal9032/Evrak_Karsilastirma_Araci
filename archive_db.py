@@ -5,7 +5,9 @@ import os
 import sqlite3
 from datetime import datetime
 
-DEFAULT_DB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "compare_archive.db")
+from paths import app_root
+
+DEFAULT_DB = os.path.join(app_root(), "data", "compare_archive.db")
 
 
 def _connect(db_path):

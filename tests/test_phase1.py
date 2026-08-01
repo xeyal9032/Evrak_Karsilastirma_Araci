@@ -60,7 +60,7 @@ class TestExcelFilters(unittest.TestCase):
             self.assertIn("FILTRE-TURUNCU", wb.sheetnames)
             ws = wb["KARSILASTIRMA-SRAVNENIE"]
             headers = [c.value for c in ws[1]]
-            self.assertEqual(headers[-1], "Durum / Status")
+            self.assertEqual(headers[-1], "Durum")
             self.assertIsNotNone(ws.auto_filter.ref)
             statuses = {row[-1].value for row in ws.iter_rows(min_row=2)}
             self.assertTrue({"MATCH", "MISMATCH", "ONLY1", "ONLY2"} & statuses)

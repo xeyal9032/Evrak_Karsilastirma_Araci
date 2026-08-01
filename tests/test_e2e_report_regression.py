@@ -13,10 +13,12 @@ import openpyxl
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
+sys.path.insert(0, os.path.dirname(__file__))
 
 import karsilastir_motor as motor
+from fixture_paths import mart_dir, excel1_dir, has_mart
 
-MART = r"C:\Users\xeyal\Desktop\excel1\mart"
+MART = mart_dir() or ""
 USER_REPORT = r"C:\Users\xeyal\Desktop\Karsilastirma_20260731_215803.xlsx"
 
 # Canli motor baseline (match-fix: ref_ids + klon guvenligi)
@@ -55,7 +57,7 @@ def _fill_rgb(cell):
     return r[-6:] if len(r) >= 6 else r
 
 
-@unittest.skipUnless(os.path.isdir(MART), "mart yok")
+@unittest.skipUnless(has_mart(), "mart yok")
 class TestE2EMartBaselineRegression(unittest.TestCase):
     def test_engine_matches_frozen_baseline(self):
         cpath, xpath = _mart_paths()
@@ -137,7 +139,7 @@ class TestE2EUserReportFile(unittest.TestCase):
 
     def test_user_report_matches_live_engine(self):
         """Rapordaki ozet, ayni kaynaklardan canli motorla ayni."""
-        if not os.path.isdir(MART):
+        if not has_mart():
             self.skipTest("mart yok")
         cpath, xpath = _mart_paths()
         with tempfile.TemporaryDirectory() as tmp:

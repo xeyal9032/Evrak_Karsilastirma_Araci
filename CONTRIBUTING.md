@@ -41,6 +41,8 @@ desktop sample folders are skipped automatically when those paths are missing.
 - Keep `karsilastir_motor.py` free of Tkinter / CLI UI details
 - Pass optional `progress_cb` and `lang` into the motor instead of globals
 - Do not commit `logs/`, `dist/`, `.venv*`, or generated Excel reports
+- Large e2e fixtures live under `tests/fixtures/excel1/` (or set `EVRAK_EXCEL1_DIR` /
+  `EVRAK_MART_DIR`). Prefer the repo copy so CI does not skip mart/DATEV e2e tests.
 
 ## Pull requests
 

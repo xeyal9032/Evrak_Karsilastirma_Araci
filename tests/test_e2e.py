@@ -14,15 +14,17 @@ import openpyxl
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
+sys.path.insert(0, os.path.dirname(__file__))
 import karsilastir_motor as motor
+from fixture_paths import mart_dir, excel1_dir, has_mart
 
 FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures")
 SAMPLE_A = os.path.join(FIXTURES, "sample_a.csv")
 SAMPLE_B = os.path.join(FIXTURES, "sample_b.csv")
 SAMPLE_JOURNAL = os.path.join(FIXTURES, "sample_journal.xlsx")
 SAMPLE_DATEV_XLSX = os.path.join(FIXTURES, "sample_datev.xlsx")
-MART_DIR = r"C:\Users\xeyal\Desktop\excel1\mart"
-EXCEL1 = r"C:\Users\xeyal\Desktop\excel1"
+MART_DIR = mart_dir() or ""
+EXCEL1 = excel1_dir() or ""
 
 DATEV_HEADER = [
     "Umsatz", "Soll/Haben-Kennzeichen", "WKZ Umsatz", "Kurs", "Basisumsatz", "WKZ Basisumsatz",
@@ -173,7 +175,7 @@ class TestE2EDetectRejects(unittest.TestCase):
             motor.detect_format(path)
 
 
-@unittest.skipUnless(os.path.isdir(MART_DIR), "mart klasoru yok")
+@unittest.skipUnless(has_mart(), "mart klasoru yok")
 class TestE2EMartRealFiles(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

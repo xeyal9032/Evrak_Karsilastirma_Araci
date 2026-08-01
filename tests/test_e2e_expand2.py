@@ -13,9 +13,10 @@ sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.dirname(__file__))
 
 import karsilastir_motor as motor
+from fixture_paths import mart_dir, excel1_dir, has_mart
 from helpers_datev import drow, write_datev_csv
 
-MART = r"C:\Users\xeyal\Desktop\excel1\mart"
+MART = mart_dir() or ""
 
 
 class TestE2EFarklarSourceLabels(unittest.TestCase):
@@ -84,7 +85,7 @@ class TestE2ERandomStableSeed(unittest.TestCase):
 
 
 class TestE2EMartTripleRun(unittest.TestCase):
-    @unittest.skipUnless(os.path.isdir(MART), "mart yok")
+    @unittest.skipUnless(has_mart(), "mart yok")
     def test_three_consecutive_runs_identical_counts(self):
         files = os.listdir(MART)
         cpath = os.path.join(MART, [f for f in files if f.endswith(".csv")][0])
@@ -118,7 +119,7 @@ class TestE2EEntrySheetStatusColumn(unittest.TestCase):
             wb = openpyxl.load_workbook(out, data_only=True)
             status = wb["Left"].cell(2, 9).value
             self.assertIn("SADECE", status.upper())
-            self.assertIn("ТОЛЬКО", status)
+            self.assertIn("DOSYADA", status.upper())
 
 
 class TestE2ECombinedSourceLabels(unittest.TestCase):

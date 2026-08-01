@@ -13,11 +13,13 @@ import openpyxl
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
+sys.path.insert(0, os.path.dirname(__file__))
 
 import karsilastir_motor as motor
+from fixture_paths import mart_dir, excel1_dir, has_mart
 
-MART = r"C:\Users\xeyal\Desktop\excel1\mart"
-EXCEL1 = r"C:\Users\xeyal\Desktop\excel1"
+MART = mart_dir() or ""
+EXCEL1 = excel1_dir() or ""
 FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures")
 
 
@@ -28,7 +30,7 @@ def _mart_paths():
     return csv_path, xlsx_path
 
 
-@unittest.skipUnless(os.path.isdir(MART), "mart yok")
+@unittest.skipUnless(has_mart(), "mart yok")
 class TestE2EMartDeepIntegrity(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

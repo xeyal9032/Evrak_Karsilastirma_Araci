@@ -16,11 +16,12 @@ sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.dirname(__file__))
 
 import karsilastir_motor as motor
+from fixture_paths import mart_dir, excel1_dir, has_mart
 from helpers_datev import drow, write_datev_csv, write_datev_xlsx, write_journal_xlsx
 
 FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures")
-MART = r"C:\Users\xeyal\Desktop\excel1\mart"
-EXCEL1 = r"C:\Users\xeyal\Desktop\excel1"
+MART = mart_dir() or ""
+EXCEL1 = excel1_dir() or ""
 
 
 class TestE2ESwapOrder(unittest.TestCase):
@@ -138,7 +139,7 @@ class TestE2EConcurrentBuild(unittest.TestCase):
 
 
 class TestE2EAmountRoundtripAllMart(unittest.TestCase):
-    @unittest.skipUnless(os.path.isdir(MART), "mart yok")
+    @unittest.skipUnless(has_mart(), "mart yok")
     def test_every_loaded_umsatz_parses_to_amt(self):
         files = os.listdir(MART)
         csv_path = os.path.join(MART, [f for f in files if f.endswith(".csv")][0])
@@ -152,7 +153,7 @@ class TestE2EAmountRoundtripAllMart(unittest.TestCase):
 
 
 class TestE2EMatchFieldInvariantsMart(unittest.TestCase):
-    @unittest.skipUnless(os.path.isdir(MART), "mart yok")
+    @unittest.skipUnless(has_mart(), "mart yok")
     def test_invariants_on_all_pairs(self):
         files = os.listdir(MART)
         csv_path = os.path.join(MART, [f for f in files if f.endswith(".csv")][0])

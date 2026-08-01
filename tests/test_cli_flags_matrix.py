@@ -78,24 +78,21 @@ class TestCliFlags(unittest.TestCase):
                 os.chdir(cwd)
 
     def test_cli_archive_const_default_path(self):
+        import archive_db
         with tempfile.TemporaryDirectory() as tmp:
             f1 = os.path.join(tmp, "a.csv")
             f2 = os.path.join(tmp, "b.csv")
             out = os.path.join(tmp, "r.xlsx")
             write_datev_csv(f1, [drow("1,00", "S", "1", "2", "0101", "X", "t")])
             write_datev_csv(f2, [drow("1,00", "S", "1", "2", "0101", "X", "t")])
-            cwd = os.getcwd()
-            try:
-                os.chdir(tmp)
-                code = run_cli([f1, f2, "-o", out, "--archive", "--quiet"])
-                self.assertEqual(code, 0)
-                db = os.path.join(tmp, "data", "compare_archive.db")
-                self.assertTrue(os.path.isfile(db))
-                import archive_db
-                rows = archive_db.list_comparisons(db_path=db)
-                self.assertEqual(len(rows), 1)
-            finally:
-                os.chdir(cwd)
+            before = {r["id"] for r in archive_db.list_comparisons(limit=500)}
+            code = run_cli([f1, f2, "-o", out, "--archive", "--quiet"])
+            self.assertEqual(code, 0)
+            self.assertTrue(os.path.isfile(archive_db.DEFAULT_DB))
+            rows = archive_db.list_comparisons(limit=500)
+            new_rows = [r for r in rows if r["id"] not in before]
+            self.assertGreaterEqual(len(new_rows), 1)
+            self.assertTrue(any(r["file1"] == f1 for r in new_rows))
 
     def test_cli_archive_failure_prints_warning_still_ok(self):
         with tempfile.TemporaryDirectory() as tmp:

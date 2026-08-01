@@ -56,10 +56,11 @@ def run_batch(folder_a, folder_b, out_dir, *, mode="stem", progress_cb=None,
     """
     Compare paired files from two folders. Returns list of result dicts.
     mode: 'stem' (same basename) or 'zip' (sorted order).
+
+    Archive / HTML / PDF failures are soft-warnings per pair (do not abort batch).
     """
     import karsilastir_motor as motor
     import archive_db as arch
-    from report_extra import write_html_report, write_pdf_report
 
     os.makedirs(out_dir, exist_ok=True)
     if mode == "zip":
@@ -68,6 +69,7 @@ def run_batch(folder_a, folder_b, out_dir, *, mode="stem", progress_cb=None,
         pairs, ua, ub = pair_by_stem(folder_a, folder_b)
 
     results = []
+    all_warnings = []
     total = max(len(pairs), 1)
     for i, (f1, f2, stem) in enumerate(pairs):
         if progress_cb:
@@ -84,16 +86,22 @@ def run_batch(folder_a, folder_b, out_dir, *, mode="stem", progress_cb=None,
             detail_sheets=detail_sheets,
             lang=lang,
         )
+        warnings = list(result.get("warnings") or [])
         result["batch_stem"] = stem
         result["unmatched_a"] = ua
         result["unmatched_b"] = ub
         if archive_db:
-            arch.save_comparison(
-                result, file1=f1, file2=f2,
-                f1_label=name1, f2_label=name2,
-                source="batch", db_path=archive_db,
-                extra={"stem": stem},
-            )
+            try:
+                arch.save_comparison(
+                    result, file1=f1, file2=f2,
+                    f1_label=name1, f2_label=name2,
+                    source="batch", db_path=archive_db,
+                    extra={"stem": stem},
+                )
+            except Exception as ex:
+                warnings.append(f"archive: {ex}")
+        result["warnings"] = warnings
+        all_warnings.extend(f"{stem}: {w}" for w in warnings)
         results.append(result)
     if progress_cb:
         progress_cb(100, "batch_done")
@@ -102,4 +110,5 @@ def run_batch(folder_a, folder_b, out_dir, *, mode="stem", progress_cb=None,
         "unmatched_a": ua,
         "unmatched_b": ub,
         "pair_count": len(pairs),
+        "warnings": all_warnings,
     }

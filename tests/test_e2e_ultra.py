@@ -14,9 +14,10 @@ sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.dirname(__file__))
 
 import karsilastir_motor as motor
+from fixture_paths import mart_dir, excel1_dir, has_mart
 from helpers_datev import drow, write_datev_csv
 
-MART = r"C:\Users\xeyal\Desktop\excel1\mart"
+MART = mart_dir() or ""
 FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures")
 
 
@@ -68,13 +69,15 @@ class TestE2EReportRowByRow(unittest.TestCase):
                     self.assertEqual(_rgb(r2[0]), "FFC000")
                     self.assertTrue(r2[9].value)  # diff note on second row
                 elif kind == "ONLY1":
-                    self.assertEqual(_rgb(r1[0]), "FFFF00")
+                    self.assertEqual(_rgb(r1[0]), "FF6B6B")
                     self.assertEqual(_rgb(r2[0]), "FF6B6B")
-                    self.assertIn("EKSIK", str(r2[9].value).upper())
+                    miss = str(r2[9].value).upper()
+                    self.assertTrue(any(x in miss for x in ("EKSİK", "EKSIK", "MISSING", "FEHLT", "ОТСУТСТВУЕТ")))
                 elif kind == "ONLY2":
                     self.assertEqual(_rgb(r1[0]), "FF6B6B")
-                    self.assertEqual(_rgb(r2[0]), "FFFF00")
-                    self.assertIn("EKSIK", str(r1[9].value).upper())
+                    self.assertEqual(_rgb(r2[0]), "FF6B6B")
+                    miss = str(r1[9].value).upper()
+                    self.assertTrue(any(x in miss for x in ("EKSİK", "EKSIK", "MISSING", "FEHLT", "ОТСУТСТВУЕТ")))
 
     def test_per_file_sheets_row_counts(self):
         a = os.path.join(FIXTURES, "sample_a.csv")
@@ -99,7 +102,7 @@ class TestE2EReportRowByRow(unittest.TestCase):
                 self.assertEqual(wb[name].freeze_panes, "A2")
 
 
-@unittest.skipUnless(os.path.isdir(MART), "mart yok")
+@unittest.skipUnless(has_mart(), "mart yok")
 class TestE2EMartMismatchNotesInReport(unittest.TestCase):
     def test_every_orange_pair_has_note(self):
         files = os.listdir(MART)
@@ -122,7 +125,7 @@ class TestE2EMartMismatchNotesInReport(unittest.TestCase):
             self.assertEqual(orange_notes, 6)
 
 
-@unittest.skipUnless(os.path.isdir(MART), "mart yok")
+@unittest.skipUnless(has_mart(), "mart yok")
 class TestE2EMartYellowAmountIntegrityInReport(unittest.TestCase):
     def test_all_yellow_pairs_amounts_equal_in_xlsx(self):
         files = os.listdir(MART)

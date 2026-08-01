@@ -3,18 +3,16 @@
 import json
 import locale
 import os
-import sys
 
-ROOT = os.path.dirname(os.path.abspath(__file__))
+from paths import resource_root
+
 SUPPORTED = ("tr", "ru", "de", "en")
 _CACHE = {}
 _DEFAULT_LANG = "tr"
 
 
 def _locales_dir():
-    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
-        return os.path.join(sys._MEIPASS, "locales")
-    return os.path.join(ROOT, "locales")
+    return os.path.join(resource_root(), "locales")
 
 
 LOCALES_DIR = _locales_dir()

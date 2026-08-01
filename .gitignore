@@ -11,6 +11,7 @@ build/
 venv/
 *.xlsx
 !tests/fixtures/*.xlsx
+!tests/fixtures/**/*.xlsx
 
 # IDE / OS
 .idea/

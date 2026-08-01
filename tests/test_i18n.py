@@ -24,6 +24,23 @@ GUI_KEYS = {
     "summary_red1", "summary_red2", "summary_diffs", "summary_diff_line",
     "summary_no_diffs", "done_title", "error_status",
     "err_permission", "err_not_found", "err_unexpected",
+    "opt_html", "opt_pdf", "opt_fast", "opt_archive",
+    "btn_batch", "btn_archive", "batch_title", "batch_pick_a", "batch_pick_b",
+    "batch_done", "archive_title", "archive_empty", "archive_warn", "report_warn",
+}
+EXCEL_KEYS = {
+    "excel_h_line", "excel_h_amount", "excel_h_sh", "excel_h_konto", "excel_h_gegen",
+    "excel_h_date", "excel_h_beleg", "excel_h_text", "excel_h_status",
+    "excel_h_source", "excel_h_note", "excel_missing", "excel_only_here",
+    "excel_summary_title", "excel_file1", "excel_file2",
+    "excel_col_total", "excel_col_matched", "excel_col_only", "excel_net_dup",
+    "excel_combined_summary", "excel_same_yellow", "excel_diff_orange",
+    "excel_only_f1", "excel_only_f2", "excel_legend_title",
+    "excel_legend_yellow", "excel_legend_yellow_desc",
+    "excel_legend_orange", "excel_legend_orange_desc",
+    "excel_legend_green", "excel_legend_green_desc",
+    "excel_legend_red", "excel_legend_red_desc",
+    "excel_source_file", "excel_bal", "excel_diff", "excel_n_entries",
 }
 CLI_KEYS = {"cli_ok", "cli_counts"}
 HTML_KEYS = {
@@ -57,6 +74,13 @@ PLACEHOLDERS = {
     "html_generated": {"ts"},
     "html_file1": {"path"},
     "html_file2": {"path"},
+    "excel_only_f1": {"name"},
+    "excel_only_f2": {"name"},
+    "excel_bal": {"name"},
+    "excel_n_entries": {"name"},
+    "batch_done": {"n", "path"},
+    "archive_warn": {"err"},
+    "report_warn": {"err"},
 }
 
 _PLACEHOLDER_RE = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)(?::[^}]*)?\}")
@@ -116,6 +140,12 @@ class TestKeyParity(unittest.TestCase):
             keys = i18n.locale_keys(lang)
             missing = HTML_KEYS - keys
             self.assertFalse(missing, msg=f"{lang} missing HTML keys: {missing}")
+
+    def test_excel_keys_present_all_langs(self):
+        for lang in i18n.SUPPORTED:
+            keys = i18n.locale_keys(lang)
+            missing = EXCEL_KEYS - keys
+            self.assertFalse(missing, msg=f"{lang} missing Excel keys: {missing}")
 
     def test_locale_keys_default_is_turkish(self):
         self.assertEqual(i18n.locale_keys(), i18n.locale_keys("tr"))
@@ -335,18 +365,17 @@ class TestDetectSystemLang(unittest.TestCase):
 
 class TestFrozenLocalesDir(unittest.TestCase):
     def test_meipass_used_when_frozen(self):
-        fake_root = os.path.join(ROOT, "locales")
-        with mock.patch.object(i18n.sys, "frozen", True, create=True):
-            with mock.patch.object(i18n.sys, "_MEIPASS", fake_root, create=True):
-                # _locales_dir joins _MEIPASS/locales — point MEIPASS at ROOT so
-                # .../locales exists under it? Plan: MEIPASS = ROOT, then locales = ROOT/locales
-                with mock.patch.object(i18n.sys, "_MEIPASS", ROOT, create=True):
-                    path = i18n._locales_dir()
-                    self.assertEqual(
-                        os.path.normcase(path),
-                        os.path.normcase(LOCALES_DIR),
-                    )
-                    self.assertTrue(os.path.isdir(path))
+        # resource_root() uses paths.sys; MEIPASS = ROOT → locales = ROOT/locales
+        import paths
+
+        with mock.patch.object(paths.sys, "frozen", True, create=True):
+            with mock.patch.object(paths.sys, "_MEIPASS", ROOT, create=True):
+                path = i18n._locales_dir()
+                self.assertEqual(
+                    os.path.normcase(path),
+                    os.path.normcase(LOCALES_DIR),
+                )
+                self.assertTrue(os.path.isdir(path))
 
 
 class TestLoadEdgeCases(unittest.TestCase):

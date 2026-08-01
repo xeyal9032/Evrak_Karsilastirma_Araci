@@ -39,6 +39,23 @@ class TestNormAmount(unittest.TestCase):
         ]:
             self.assertEqual(motor.norm_amount(s), expected)
 
+    def test_english_decimal_dot(self):
+        self.assertEqual(motor.norm_amount("12.34"), 12.34)
+        self.assertEqual(motor.norm_amount("1234.56"), 1234.56)
+        self.assertEqual(motor.norm_amount("0.01"), 0.01)
+
+    def test_english_thousands_comma(self):
+        self.assertEqual(motor.norm_amount("1,234.56"), 1234.56)
+        self.assertEqual(motor.norm_amount("1,234,567.89"), 1234567.89)
+
+    def test_german_thousands_dot_only(self):
+        self.assertEqual(motor.norm_amount("1.234"), 1234.0)
+        self.assertEqual(motor.norm_amount("1.234.567"), 1234567.0)
+
+    def test_signed_amounts(self):
+        self.assertEqual(motor.norm_amount("-12,50"), -12.5)
+        self.assertEqual(motor.norm_amount("-12.50"), -12.5)
+
 
 class TestNormBelegfeld(unittest.TestCase):
     def test_preserves_letters_digits_after_strip(self):

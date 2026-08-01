@@ -64,12 +64,11 @@ class App(tk.Tk):
         self.file1 = tk.StringVar()
         self.file2 = tk.StringVar()
 
-        self.geometry("720x440")
+        self.geometry("720x560")
         self.resizable(False, False)
 
         top = tk.Frame(self)
         top.pack(fill="x", padx=20, pady=(12, 0))
-        tk.Label(top, textvariable=tk.StringVar(), width=0).pack_forget()
         self.lbl_lang = tk.Label(top, text="")
         self.lbl_lang.pack(side="right", padx=(8, 0))
         self.lang_box = ttk.Combobox(
@@ -112,10 +111,23 @@ class App(tk.Tk):
         opts.pack(pady=(0, 4))
         self.var_html = tk.BooleanVar(value=True)
         self.var_pdf = tk.BooleanVar(value=False)
+        self.var_fast = tk.BooleanVar(value=False)
+        self.var_archive = tk.BooleanVar(value=True)
         self.chk_html = tk.Checkbutton(opts, text="HTML", variable=self.var_html)
-        self.chk_html.pack(side="left", padx=8)
+        self.chk_html.pack(side="left", padx=6)
         self.chk_pdf = tk.Checkbutton(opts, text="PDF", variable=self.var_pdf)
-        self.chk_pdf.pack(side="left", padx=8)
+        self.chk_pdf.pack(side="left", padx=6)
+        self.chk_fast = tk.Checkbutton(opts, text="Fast", variable=self.var_fast)
+        self.chk_fast.pack(side="left", padx=6)
+        self.chk_archive = tk.Checkbutton(opts, text="Archive", variable=self.var_archive)
+        self.chk_archive.pack(side="left", padx=6)
+
+        extra = tk.Frame(self)
+        extra.pack(pady=(0, 4))
+        self.btn_batch = tk.Button(extra, command=self.run_batch)
+        self.btn_batch.pack(side="left", padx=6)
+        self.btn_archive = tk.Button(extra, command=self.show_archive)
+        self.btn_archive.pack(side="left", padx=6)
 
         self.compare_btn = tk.Button(
             self, font=("Segoe UI", 11, "bold"),
@@ -138,6 +150,12 @@ class App(tk.Tk):
         self.btn1.config(text=self._t("file1"))
         self.btn2.config(text=self._t("file2"))
         self.compare_btn.config(text=self._t("compare"))
+        self.chk_html.config(text=self._t("opt_html"))
+        self.chk_pdf.config(text=self._t("opt_pdf"))
+        self.chk_fast.config(text=self._t("opt_fast"))
+        self.chk_archive.config(text=self._t("opt_archive"))
+        self.btn_batch.config(text=self._t("btn_batch"))
+        self.btn_archive.config(text=self._t("btn_archive"))
         self._update_format_status()
 
     def _setup_dnd(self):
@@ -207,12 +225,12 @@ class App(tk.Tk):
     def pick_file2(self):
         self._pick(2)
 
-    def _on_progress(self, pct, stage):
+    def _on_progress(self, pct, stage, *, lang, fmt1, fmt2):
         self._progress_pct = pct
         fmt_txt = ""
-        if self._fmt1 and self._fmt2:
-            fmt_txt = f" ({motor.format_label(self._fmt1)} ↔ {motor.format_label(self._fmt2)})"
-        text = self._t("comparing", fmt=fmt_txt, pct=pct)
+        if fmt1 and fmt2:
+            fmt_txt = f" ({motor.format_label(fmt1)} ↔ {motor.format_label(fmt2)})"
+        text = i18n.t("comparing", lang=lang, fmt=fmt_txt, pct=pct)
         self.after(0, lambda: self._set_progress_ui(pct, text))
 
     def _set_progress_ui(self, pct, text):
@@ -233,36 +251,54 @@ class App(tk.Tk):
         out_path = os.path.join(DESKTOP, out_name)
         name1 = os.path.splitext(os.path.basename(f1))[0][:31]
         name2 = os.path.splitext(os.path.basename(f2))[0][:31]
+        # Snapshot Tk vars on the main thread before starting the worker.
+        lang = self.lang.get()
+        write_html = bool(self.var_html.get())
+        write_pdf = bool(self.var_pdf.get())
+        detail_sheets = not bool(self.var_fast.get())
+        do_archive = bool(self.var_archive.get())
+        fmt1, fmt2 = self._fmt1, self._fmt2
 
         self._busy = True
         self._progress_pct = 0
         self.progress["value"] = 0
         self.compare_btn.config(state="disabled")
-        app_log.log_run_start(f1, f2, self._fmt1, self._fmt2, source="gui")
+        app_log.log_run_start(f1, f2, fmt1, fmt2, source="gui")
         t0 = time.time()
+
+        def progress_cb(pct, stage):
+            self._on_progress(pct, stage, lang=lang, fmt1=fmt1, fmt2=fmt2)
 
         def worker():
             try:
                 result = motor.build_report(
                     f1, f2, out_path,
                     f1_label=name1, f2_label=name2,
-                    progress_cb=self._on_progress,
-                    write_html=bool(self.var_html.get()),
-                    write_pdf=bool(self.var_pdf.get()),
-                    lang=self.lang.get(),
+                    progress_cb=progress_cb,
+                    write_html=write_html,
+                    write_pdf=write_pdf,
+                    detail_sheets=detail_sheets,
+                    lang=lang,
                 )
                 elapsed = time.time() - t0
                 app_log.log_run_ok(result, elapsed, out_path)
-                try:
-                    import archive_db
-                    archive_db.save_comparison(
-                        result, file1=f1, file2=f2,
-                        f1_label=name1, f2_label=name2,
-                        elapsed_s=elapsed, source="gui",
-                    )
-                except Exception:
-                    pass
-                self.after(0, lambda r=result, n=out_name, p=out_path: self._on_compare_ok(r, n, p))
+                archive_err = None
+                if do_archive:
+                    try:
+                        import archive_db
+                        archive_db.save_comparison(
+                            result, file1=f1, file2=f2,
+                            f1_label=name1, f2_label=name2,
+                            elapsed_s=elapsed, source="gui",
+                        )
+                    except Exception as ex:
+                        archive_err = str(ex)
+                        app_log.log_run_err(ex, traceback.format_exc())
+                self.after(
+                    0,
+                    lambda r=result, n=out_name, p=out_path, ae=archive_err, lg=lang:
+                        self._on_compare_ok(r, n, p, archive_err=ae, lang=lg),
+                )
             except Exception as ex:
                 tb = traceback.format_exc()
                 app_log.log_run_err(ex, tb)
@@ -270,35 +306,123 @@ class App(tk.Tk):
 
         threading.Thread(target=worker, daemon=True).start()
 
-    def _on_compare_ok(self, result, out_name, out_path):
+    def run_batch(self):
+        if self._busy:
+            return
+        a = filedialog.askdirectory(title=self._t("batch_pick_a"))
+        if not a:
+            return
+        b = filedialog.askdirectory(title=self._t("batch_pick_b"))
+        if not b:
+            return
+        out_dir = os.path.join(DESKTOP, f"batch_out_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}")
+        lang = self.lang.get()
+        write_html = bool(self.var_html.get())
+        write_pdf = bool(self.var_pdf.get())
+        detail_sheets = not bool(self.var_fast.get())
+        import archive_db as arch_mod
+        archive_db_path = arch_mod.DEFAULT_DB if self.var_archive.get() else None
+
+        self._busy = True
+        self.compare_btn.config(state="disabled")
+        self.progress["value"] = 0
+
+        def progress_cb(pct, stage):
+            self.after(0, lambda: self._set_progress_ui(pct, f"{pct}% {stage}"))
+
+        def worker():
+            try:
+                import batch_compare
+                summary = batch_compare.run_batch(
+                    a, b, out_dir,
+                    progress_cb=progress_cb,
+                    write_html=write_html,
+                    write_pdf=write_pdf,
+                    archive_db=archive_db_path,
+                    detail_sheets=detail_sheets,
+                    lang=lang,
+                )
+                self.after(
+                    0,
+                    lambda s=summary, p=out_dir, lg=lang: self._on_batch_ok(s, p, lg),
+                )
+            except Exception as ex:
+                tb = traceback.format_exc()
+                app_log.log_run_err(ex, tb)
+                self.after(0, lambda e=ex, t=tb: self._on_compare_err(e, t))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def show_archive(self):
+        try:
+            import archive_db
+            rows = archive_db.list_comparisons(limit=30)
+        except Exception as ex:
+            messagebox.showerror(self._t("archive_title"), str(ex))
+            return
+        if not rows:
+            messagebox.showinfo(self._t("archive_title"), self._t("archive_empty"))
+            return
+        lines = []
+        for r in rows:
+            lines.append(
+                f"#{r['id']} {r['created_at']}  "
+                f"m={r['match_count']} mm={r['mismatch_count']} "
+                f"o1={r['only1_count']} o2={r['only2_count']}\n"
+                f"  {os.path.basename(r['file1'] or '')} ↔ {os.path.basename(r['file2'] or '')}"
+            )
+        messagebox.showinfo(self._t("archive_title"), "\n".join(lines[:40]))
+
+    def _on_batch_ok(self, summary, out_dir, lang):
         self._busy = False
         self.compare_btn.config(state="normal")
         self.progress["value"] = 100
-        self.status.config(text=self._t("done", name=out_name), fg="#0a6")
+        msg = i18n.t("batch_done", lang=lang, n=summary.get("pair_count", 0), path=out_dir)
+        self.status.config(text=msg, fg="#0a6")
+        messagebox.showinfo(self._t("batch_title"), msg)
+
+    def _on_compare_ok(self, result, out_name, out_path, archive_err=None, lang=None):
+        lang = lang or self.lang.get()
+        self._busy = False
+        self.compare_btn.config(state="normal")
+        self.progress["value"] = 100
+        self.status.config(text=i18n.t("done", lang=lang, name=out_name), fg="#0a6")
+        warns = list(result.get("warnings") or [])
+        if archive_err:
+            warns.append(archive_err)
+            messagebox.showwarning(
+                i18n.t("warn_open_title", lang=lang),
+                i18n.t("archive_warn", lang=lang, err=archive_err),
+            )
+        if result.get("warnings"):
+            messagebox.showwarning(
+                i18n.t("warn_open_title", lang=lang),
+                i18n.t("report_warn", lang=lang, err="\n".join(result["warnings"])),
+            )
         try:
             open_file(out_path)
         except OSError:
             messagebox.showwarning(
-                self._t("warn_open_title"),
-                self._t("warn_open_body", path=out_path),
+                i18n.t("warn_open_title", lang=lang),
+                i18n.t("warn_open_body", lang=lang, path=out_path),
             )
 
         top_diffs = result["diffs"][:5]
         msg_lines = [
-            self._t("summary_sheet"),
-            self._t("summary_yellow", n=result["match_count"]),
-            self._t("summary_orange", n=result["mismatch_count"]),
-            self._t("summary_red1", n=result["only1_count"]),
-            self._t("summary_red2", n=result["only2_count"]),
+            i18n.t("summary_sheet", lang=lang),
+            i18n.t("summary_yellow", lang=lang, n=result["match_count"]),
+            i18n.t("summary_orange", lang=lang, n=result["mismatch_count"]),
+            i18n.t("summary_red1", lang=lang, n=result["only1_count"]),
+            i18n.t("summary_red2", lang=lang, n=result["only2_count"]),
             "",
         ]
         if top_diffs:
-            msg_lines.append(self._t("summary_diffs"))
+            msg_lines.append(i18n.t("summary_diffs", lang=lang))
             for k, b1, b2, d, c1, c2 in top_diffs:
-                msg_lines.append(self._t("summary_diff_line", k=k, d=d))
+                msg_lines.append(i18n.t("summary_diff_line", lang=lang, k=k, d=d))
         else:
-            msg_lines.append(self._t("summary_no_diffs"))
-        messagebox.showinfo(self._t("done_title"), "\n".join(msg_lines))
+            msg_lines.append(i18n.t("summary_no_diffs", lang=lang))
+        messagebox.showinfo(i18n.t("done_title", lang=lang), "\n".join(msg_lines))
 
     def _on_compare_err(self, ex, tb):
         self._busy = False
@@ -323,6 +447,29 @@ def _cli_err(msg, code=1):
     return code
 
 
+def _ensure_cli_console():
+    """Windowed frozen exe has no console — attach/allocate one for CLI I/O."""
+    if not getattr(sys, "frozen", False):
+        return
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        # Attach to parent console (cmd/PowerShell) if present; else create one.
+        if kernel32.GetConsoleWindow() == 0:
+            if kernel32.AttachConsole(-1) == 0:
+                kernel32.AllocConsole()
+        sys.stdout = open("CONOUT$", "w", encoding="utf-8", errors="replace", buffering=1)
+        sys.stderr = open("CONOUT$", "w", encoding="utf-8", errors="replace", buffering=1)
+        try:
+            sys.stdin = open("CONIN$", "r", encoding="utf-8", errors="replace")
+        except OSError:
+            pass
+    except Exception:
+        pass
+
+
 def _require_path(path, *, as_dir=False):
     if as_dir:
         if not os.path.isdir(path):
@@ -341,6 +488,9 @@ def _require_path(path, *, as_dir=False):
 
 
 def run_cli(argv=None):
+    _ensure_cli_console()
+    import archive_db
+
     parser = argparse.ArgumentParser(
         prog="Evrak_Karsilastirma_Araci",
         description="Compare DATEV / Journal exports and write Excel/HTML/PDF reports.",
@@ -358,8 +508,10 @@ def run_cli(argv=None):
     parser.add_argument("--quiet", action="store_true", help="Suppress progress on stderr")
     parser.add_argument("--html", action="store_true", help="Also write HTML summary")
     parser.add_argument("--pdf", action="store_true", help="Also write PDF summary (needs reportlab)")
-    parser.add_argument("--archive", metavar="DB", nargs="?", const="data/compare_archive.db",
-                        help="Save run into SQLite archive (optional path)")
+    parser.add_argument(
+        "--archive", metavar="DB", nargs="?", const=archive_db.DEFAULT_DB,
+        help=f"Save run into SQLite archive (default: {archive_db.DEFAULT_DB})",
+    )
     parser.add_argument("--batch", action="store_true",
                         help="Treat file1/file2 as folders and compare paired files")
     parser.add_argument("--batch-mode", choices=("stem", "zip"), default="stem",
@@ -393,6 +545,8 @@ def run_cli(argv=None):
             )
             if not args.quiet:
                 print(file=sys.stderr)
+            for w in summary.get("warnings") or []:
+                print(f"warning: {w}", file=sys.stderr)
             print(f"OK batch pairs={summary['pair_count']} out={out_dir}")
             print(f"unmatched_a={len(summary['unmatched_a'])} unmatched_b={len(summary['unmatched_b'])}")
             print(f"elapsed={time.time() - t0:.2f}s")
@@ -461,6 +615,8 @@ def run_cli(argv=None):
         print(file=sys.stderr)
     elapsed = time.time() - t0
     app_log.log_run_ok(result, elapsed, out_path)
+    for w in result.get("warnings") or []:
+        print(f"warning: {w}", file=sys.stderr)
     if args.archive:
         try:
             import archive_db

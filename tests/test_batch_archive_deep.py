@@ -107,6 +107,23 @@ class TestRunBatch(unittest.TestCase):
             meta = json.loads(row[0])
             self.assertEqual(meta.get("stem"), "stem1")
 
+    def test_run_batch_archive_failure_is_soft_warning(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            a = os.path.join(tmp, "A")
+            b = os.path.join(tmp, "B")
+            out = os.path.join(tmp, "out")
+            os.makedirs(a)
+            os.makedirs(b)
+            write_datev_csv(os.path.join(a, "stem1.csv"), [drow("1,00", "S", "1", "2", "0101", "A", "t")])
+            write_datev_csv(os.path.join(b, "stem1.csv"), [drow("1,00", "S", "1", "2", "0101", "A", "t")])
+            # Directory path is not a valid sqlite file → archive fails soft.
+            bad_db = os.path.join(tmp, "not_a_db_dir")
+            os.makedirs(bad_db)
+            summary = batch_compare.run_batch(a, b, out, mode="stem", archive_db=bad_db)
+            self.assertEqual(summary["pair_count"], 1)
+            self.assertTrue(os.path.isfile(os.path.join(out, "Karsilastirma_stem1.xlsx")))
+            self.assertTrue(any("archive:" in w for w in summary.get("warnings") or []))
+
 
 class TestArchiveDeep(unittest.TestCase):
     def test_list_comparisons_missing_db_empty(self):

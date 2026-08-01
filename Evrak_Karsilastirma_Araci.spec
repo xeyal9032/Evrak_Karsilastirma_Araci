@@ -4,6 +4,10 @@ import os
 
 hiddenimports = []
 hiddenimports += collect_submodules('openpyxl')
+try:
+    hiddenimports += collect_submodules('reportlab')
+except Exception:
+    pass
 
 root = os.path.abspath('.')
 locale_datas = [
@@ -19,7 +23,7 @@ a = Analysis(
     binaries=[],
     datas=locale_datas,
     hiddenimports=hiddenimports + [
-        'i18n', 'app_log', 'karsilastir_motor',
+        'i18n', 'app_log', 'paths', 'karsilastir_motor',
         'report_extra', 'batch_compare', 'archive_db',
     ],
     hookspath=[],
@@ -40,11 +44,11 @@ exe = EXE(
     name='Evrak_Karsilastirma_Araci',
     debug=False,
     bootloader_ignore_signals=False,
-    strip=False,
-    upx=True,
+        strip=False,
+    upx=False,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=True,
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,

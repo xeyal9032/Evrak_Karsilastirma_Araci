@@ -100,6 +100,13 @@ def _cell_str(v):
 
 
 def norm_amount(s):
+    """Parse German DATEV or English decimal amounts to float (2 decimals).
+
+    Examples:
+      1.234.567,89 / 1,99 / 1000,00  (DE)
+      12.34 / 1,234.56 / 1234.56     (EN)
+      1.234                          (DE thousands, no cents)
+    """
     if s is None:
         return None
     if isinstance(s, (int, float)):
@@ -107,9 +114,37 @@ def norm_amount(s):
     s = _cell_str(s)
     if not s:
         return None
-    s = s.replace(".", "").replace(",", ".")
+    s = s.replace(" ", "").replace("\u00a0", "")
+    # Keep sign if present
+    neg = False
+    if s.startswith("-"):
+        neg = True
+        s = s[1:]
+    elif s.startswith("+"):
+        s = s[1:]
+    if not s:
+        return None
     try:
-        return round(float(s), 2)
+        if "," in s and "." in s:
+            if s.rfind(",") > s.rfind("."):
+                # 1.234,56
+                s = s.replace(".", "").replace(",", ".")
+            else:
+                # 1,234.56
+                s = s.replace(",", "")
+        elif "," in s:
+            # Only comma: DE decimal, or EN thousands (1,234)
+            if re.fullmatch(r"\d{1,3}(,\d{3})+", s):
+                s = s.replace(",", "")
+            else:
+                s = s.replace(",", ".")
+        elif "." in s:
+            # Only dot: DE thousands (1.234 / 1.234.567) or EN decimal (12.34)
+            if re.fullmatch(r"\d{1,3}(\.\d{3})+", s):
+                s = s.replace(".", "")
+            # else keep as EN decimal
+        val = round(float(s), 2)
+        return -val if neg else val
     except ValueError:
         return None
 
@@ -416,7 +451,8 @@ def load_journal_xlsx(fpath):
             need = max(col.values())
             padded = list(row) + [None] * (need + 1 - len(row))
             amt = norm_amount(padded[col["Betrag"]])
-            if amt is None or amt == 0:
+            # Keep 0,00 like DATEV (only skip unparseable amounts).
+            if amt is None:
                 continue
             soll = padded[col["Sollkto"]]
             haben = padded[col["Habenkto"]]
@@ -958,6 +994,51 @@ HEADER_FILL = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="s
 HEADER_FONT = Font(color="FFFFFF", bold=True)
 BOLD = Font(bold=True)
 
+INVALID_SHEET_CHARS = '[]:*?/\\'
+
+
+def _norm_report_lang(lang):
+    import i18n
+    lang = (lang or "tr").lower()
+    return lang if lang in i18n.SUPPORTED else "tr"
+
+
+def _excel_t(key, lang, **kwargs):
+    import i18n
+    return i18n.t(key, lang=_norm_report_lang(lang), **kwargs)
+
+
+def excel_entry_headers(lang=None):
+    return [
+        _excel_t("excel_h_line", lang),
+        _excel_t("excel_h_amount", lang),
+        _excel_t("excel_h_sh", lang),
+        _excel_t("excel_h_konto", lang),
+        _excel_t("excel_h_gegen", lang),
+        _excel_t("excel_h_date", lang),
+        _excel_t("excel_h_beleg", lang),
+        _excel_t("excel_h_text", lang),
+        _excel_t("excel_h_status", lang),
+    ]
+
+
+def excel_combined_headers(lang=None):
+    return [
+        _excel_t("excel_h_source", lang),
+        _excel_t("excel_h_line", lang),
+        _excel_t("excel_h_amount", lang),
+        _excel_t("excel_h_sh", lang),
+        _excel_t("excel_h_konto", lang),
+        _excel_t("excel_h_gegen", lang),
+        _excel_t("excel_h_date", lang),
+        _excel_t("excel_h_beleg", lang),
+        _excel_t("excel_h_text", lang),
+        _excel_t("excel_h_note", lang),
+        _excel_t("excel_h_status", lang),
+    ]
+
+
+# Default TR bilingual headers (tests / callers without lang).
 HEADERS = [
     "Satir / Строка",
     "Umsatz / Сумма",
@@ -969,9 +1050,6 @@ HEADERS = [
     "Buchungstext / Текст проводки",
     "Eslesme Durumu / Статус сопоставления",
 ]
-
-
-INVALID_SHEET_CHARS = '[]:*?/\\'
 
 
 def sanitize_sheet_name(name, fallback, taken):
@@ -1011,14 +1089,16 @@ def write_header(ws, headers):
         cell.font = HEADER_FONT
 
 
-def write_entry_sheet(ws, entries):
-    write_header(ws, HEADERS)
+def write_entry_sheet(ws, entries, lang=None):
+    headers = excel_entry_headers(lang)
+    write_header(ws, headers)
+    only_status = _excel_t("excel_only_here", lang)
     for e in entries:
-        status = e["tier"] if e["matched"] else "SADECE BU DOSYADA / ТОЛЬКО В ЭТОМ ФАЙЛЕ (fark/разница)"
+        status = e["tier"] if e["matched"] else only_status
         ws.append([e["line"], e["umsatz"], e["sh"], e["konto"], e["gegenkonto"], e["datum"], e["belegfeld1"], e["text"], status])
         r = ws.max_row
         fill = fill_for(e)
-        for c in range(1, len(HEADERS) + 1):
+        for c in range(1, len(headers) + 1):
             ws.cell(row=r, column=c).fill = fill
     widths = [7, 12, 10, 9, 11, 11, 26, 55, 32]
     for i, w in enumerate(widths, start=1):
@@ -1043,8 +1123,10 @@ COMBINED_HEADERS = [
 THIN_TOP = Border(top=Side(style="thin", color="808080"))
 
 
-def write_combined_sheet(ws, groups, f1_label, f2_label):
-    write_header(ws, COMBINED_HEADERS)
+def write_combined_sheet(ws, groups, f1_label, f2_label, lang=None):
+    headers = excel_combined_headers(lang)
+    write_header(ws, headers)
+    missing = _excel_t("excel_missing", lang)
     row = 2
 
     def emit(entry, source_label, note, fill, top_border, status):
@@ -1071,11 +1153,12 @@ def write_combined_sheet(ws, groups, f1_label, f2_label):
             emit(g["e1"], f1_label, "", ORANGE, True, "MISMATCH")
             emit(g["e2"], f2_label, note, ORANGE, False, "MISMATCH")
         elif kind == "ONLY1":
-            emit(g["e1"], f1_label, "", YELLOW, True, "ONLY1")
-            emit(None, f2_label, "EKSIK / ОТСУТСТВУЕТ", RED, False, "ONLY1")
+            # Both half-rows RED: present row = only in this file; blank = missing opposite.
+            emit(g["e1"], f1_label, "", RED, True, "ONLY1")
+            emit(None, f2_label, missing, RED, False, "ONLY1")
         elif kind == "ONLY2":
-            emit(None, f1_label, "EKSIK / ОТСУТСТВУЕТ", RED, True, "ONLY2")
-            emit(g["e2"], f2_label, "", YELLOW, False, "ONLY2")
+            emit(None, f1_label, missing, RED, True, "ONLY2")
+            emit(g["e2"], f2_label, "", RED, False, "ONLY2")
 
     widths = [16, 7, 12, 10, 9, 11, 11, 26, 50, 45, 12]
     for i, w in enumerate(widths, start=1):
@@ -1085,9 +1168,11 @@ def write_combined_sheet(ws, groups, f1_label, f2_label):
         ws.auto_filter.ref = f"A1:K{row - 1}"
 
 
-def write_filter_sheet(ws, groups, f1_label, f2_label, kinds):
+def write_filter_sheet(ws, groups, f1_label, f2_label, kinds, lang=None):
     """Combined-sheet satirlari arasindan sadece secili Durum turlerini yazar."""
-    write_header(ws, COMBINED_HEADERS)
+    headers = excel_combined_headers(lang)
+    write_header(ws, headers)
+    missing = _excel_t("excel_missing", lang)
     row = 2
 
     def emit(entry, source_label, note, fill, top_border, status):
@@ -1113,11 +1198,11 @@ def write_filter_sheet(ws, groups, f1_label, f2_label, kinds):
             emit(g["e1"], f1_label, "", ORANGE, True, "MISMATCH")
             emit(g["e2"], f2_label, note, ORANGE, False, "MISMATCH")
         elif kind == "ONLY1":
-            emit(g["e1"], f1_label, "", YELLOW, True, "ONLY1")
-            emit(None, f2_label, "EKSIK / ОТСУТСТВУЕТ", RED, False, "ONLY1")
+            emit(g["e1"], f1_label, "", RED, True, "ONLY1")
+            emit(None, f2_label, missing, RED, False, "ONLY1")
         elif kind == "ONLY2":
-            emit(None, f1_label, "EKSIK / ОТСУТСТВУЕТ", RED, True, "ONLY2")
-            emit(g["e2"], f2_label, "", YELLOW, False, "ONLY2")
+            emit(None, f1_label, missing, RED, True, "ONLY2")
+            emit(g["e2"], f2_label, "", RED, False, "ONLY2")
 
     widths = [16, 7, 12, 10, 9, 11, 11, 26, 50, 45, 12]
     for i, w in enumerate(widths, start=1):
@@ -1130,6 +1215,7 @@ def write_filter_sheet(ws, groups, f1_label, f2_label, kinds):
 def build_report(f1_path, f2_path, out_path, f1_label="Dosya1", f2_label="Dosya2",
                  progress_cb=None, write_html=False, write_pdf=False, detail_sheets=True,
                  lang=None):
+    lang = _norm_report_lang(lang)
     e1, e2, net1, net2 = compare(f1_path, f2_path, progress_cb=progress_cb)
 
     _progress(progress_cb, 92, "build_sheets")
@@ -1138,21 +1224,18 @@ def build_report(f1_path, f2_path, out_path, f1_label="Dosya1", f2_label="Dosya2
     ws_combined = wb.active
     ws_combined.title = "KARSILASTIRMA-SRAVNENIE"
     groups = build_combined_rows(e1, e2)
-    write_combined_sheet(ws_combined, groups, f1_label, f2_label)
+    write_combined_sheet(ws_combined, groups, f1_label, f2_label, lang=lang)
 
     ws_red = wb.create_sheet("FILTRE-KIRMIZI")
-    write_filter_sheet(ws_red, groups, f1_label, f2_label, {"ONLY1", "ONLY2"})
+    write_filter_sheet(ws_red, groups, f1_label, f2_label, {"ONLY1", "ONLY2"}, lang=lang)
     ws_orange = wb.create_sheet("FILTRE-TURUNCU")
-    write_filter_sheet(ws_orange, groups, f1_label, f2_label, {"MISMATCH"})
+    write_filter_sheet(ws_orange, groups, f1_label, f2_label, {"MISMATCH"}, lang=lang)
 
     ws0 = wb.create_sheet("OZET-SVODKA")
 
     # NOT: ws.append([]) openpyxl'de max_row'u guncellemiyor (bos satirlarda
     # geriye kalabiliyor), bu yuzden burada satir numarasini KENDIMIZ manuel
     # sayiyoruz - ws.append()/ws.max_row'a guvenmiyoruz.
-    # ПРИМЕЧАНИЕ: ws.append([]) в openpyxl не обновляет max_row (отстаёт при
-    # пустых строках), поэтому номер строки считаем ВРУЧНУЮ сами - не
-    # полагаемся на ws.append()/ws.max_row.
     row = 1
 
     def put(*values):
@@ -1163,11 +1246,11 @@ def build_report(f1_path, f2_path, out_path, f1_label="Dosya1", f2_label="Dosya2
         row += 1
         return r
 
-    r = put("DATEV Evrak Karsilastirma Ozeti / Сводка сравнения документов DATEV")
+    r = put(_excel_t("excel_summary_title", lang))
     ws0.cell(row=r, column=1).font = Font(bold=True, size=14)
     put()
-    put("Dosya 1 / Файл 1", f1_path)
-    put("Dosya 2 / Файл 2", f2_path)
+    put(_excel_t("excel_file1", lang), f1_path)
+    put(_excel_t("excel_file2", lang), f2_path)
     put()
 
     matched1 = sum(1 for e in e1 if e["matched"])
@@ -1175,33 +1258,38 @@ def build_report(f1_path, f2_path, out_path, f1_label="Dosya1", f2_label="Dosya2
     red1 = len(e1) - matched1
     red2 = len(e2) - matched2
 
-    r = put("", "Toplam kayit / Всего записей", "Eslesen / Совпало (sari/yesil/turuncu)", "SADECE bu dosyada / ТОЛЬКО здесь (kirmizi/красный)")
+    r = put(
+        "",
+        _excel_t("excel_col_total", lang),
+        _excel_t("excel_col_matched", lang),
+        _excel_t("excel_col_only", lang),
+    )
     for c in range(1, 5):
         ws0.cell(row=r, column=c).font = BOLD
     put(f1_label, len(e1), matched1, red1)
     put(f2_label, len(e2), matched2, red2)
     put()
-    put("Dosya icinde kendini iptal eden mukerrer kayit / Само-аннулирующаяся дублирующая запись внутри файла", f1_label, net1)
-    put("Dosya icinde kendini iptal eden mukerrer kayit / Само-аннулирующаяся дублирующая запись внутри файла", f2_label, net2)
+    put(_excel_t("excel_net_dup", lang), f1_label, net1)
+    put(_excel_t("excel_net_dup", lang), f2_label, net2)
     put()
 
     match_count = sum(1 for g in groups if g["kind"] == "MATCH")
     mismatch_count = sum(1 for g in groups if g["kind"] == "MISMATCH")
     only1_count = sum(1 for g in groups if g["kind"] == "ONLY1")
     only2_count = sum(1 for g in groups if g["kind"] == "ONLY2")
-    put(f"'KARSILASTIRMA-SRAVNENIE' sayfasi ozeti / Сводка листа 'KARSILASTIRMA-SRAVNENIE':")
-    put("  Ayni (SARI/ЖЁЛТЫЙ) / Совпадает", match_count)
-    put("  Deger farkli (TURUNCU/ОРАНЖЕВЫЙ) / Значение отличается", mismatch_count)
-    put(f"  Sadece {f1_label}'de (KIRMIZI/КРАСНЫЙ) / Только в {f1_label}", only1_count)
-    put(f"  Sadece {f2_label}'de (KIRMIZI/КРАСНЫЙ) / Только в {f2_label}", only2_count)
+    put(_excel_t("excel_combined_summary", lang))
+    put(_excel_t("excel_same_yellow", lang), match_count)
+    put(_excel_t("excel_diff_orange", lang), mismatch_count)
+    put(_excel_t("excel_only_f1", lang, name=f1_label), only1_count)
+    put(_excel_t("excel_only_f2", lang, name=f2_label), only2_count)
     put()
-    put("Renk aciklamalari / Пояснение цветов:")
+    put(_excel_t("excel_legend_title", lang))
 
     legend_fills = [
-        ("SARI / ЖЁЛТЫЙ", "Iki dosyada da var (tam veya guclu eslesme) / Есть в обоих файлах (полное или сильное совпадение)", YELLOW),
-        ("TURUNCU / ОРАНЖЕВЫЙ", "Muhtemelen ayni kayit, sadece tutar+hesap+tarih eslesti, metin farkli - kontrol edin / Вероятно та же запись, совпали только сумма+счёт+дата, текст разный - проверьте", ORANGE),
-        ("YESIL / ЗЕЛЁНЫЙ", "Dosya icinde mukerrer kayit + iptali (net sifir), gercek fark degil / Дубликат+сторно внутри файла (нетто ноль), не настоящая разница", GREEN),
-        ("KIRMIZI / КРАСНЫЙ", "Sadece bu dosyada var, digerinde karsiligi yok - EN ONEMLI SATIRLAR / Есть только в этом файле - САМЫЕ ВАЖНЫЕ СТРОКИ", RED),
+        (_excel_t("excel_legend_yellow", lang), _excel_t("excel_legend_yellow_desc", lang), YELLOW),
+        (_excel_t("excel_legend_orange", lang), _excel_t("excel_legend_orange_desc", lang), ORANGE),
+        (_excel_t("excel_legend_green", lang), _excel_t("excel_legend_green_desc", lang), GREEN),
+        (_excel_t("excel_legend_red", lang), _excel_t("excel_legend_red_desc", lang), RED),
     ]
     for label, desc, fill in legend_fills:
         r = put(label, desc)
@@ -1212,6 +1300,15 @@ def build_report(f1_path, f2_path, out_path, f1_label="Dosya1", f2_label="Dosya2
         ws0.column_dimensions[col].width = w
 
     diffs = account_balance_diff(e1, e2)
+    entry_headers = excel_entry_headers(lang)
+    bal_headers = [
+        _excel_t("excel_h_konto", lang),
+        _excel_t("excel_bal", lang, name=f1_label),
+        _excel_t("excel_bal", lang, name=f2_label),
+        _excel_t("excel_diff", lang),
+        _excel_t("excel_n_entries", lang, name=f1_label),
+        _excel_t("excel_n_entries", lang, name=f2_label),
+    ]
 
     if detail_sheets:
         taken_sheet_names = {
@@ -1222,16 +1319,19 @@ def build_report(f1_path, f2_path, out_path, f1_label="Dosya1", f2_label="Dosya2
         sheet2_name = sanitize_sheet_name(f2_label, "Dosya2-Fayl2", taken_sheet_names)
 
         ws1 = wb.create_sheet(sheet1_name)
-        write_entry_sheet(ws1, e1)
+        write_entry_sheet(ws1, e1, lang=lang)
         ws2 = wb.create_sheet(sheet2_name)
-        write_entry_sheet(ws2, e2)
+        write_entry_sheet(ws2, e2, lang=lang)
 
         ws3 = wb.create_sheet("FARKLAR-RAZNICA")
-        write_header(ws3, ["Kaynak Dosya / Исходный файл"] + HEADERS)
+        write_header(ws3, [_excel_t("excel_source_file", lang)] + entry_headers[:8])
         for label, entries in ((f1_label, e1), (f2_label, e2)):
             for e in entries:
                 if not e["matched"]:
-                    ws3.append([label, e["line"], e["umsatz"], e["sh"], e["konto"], e["gegenkonto"], e["datum"], e["belegfeld1"], e["text"]])
+                    ws3.append([
+                        label, e["line"], e["umsatz"], e["sh"], e["konto"],
+                        e["gegenkonto"], e["datum"], e["belegfeld1"], e["text"],
+                    ])
                     for c in range(1, 10):
                         ws3.cell(row=ws3.max_row, column=c).fill = RED
         widths3 = [18, 7, 12, 10, 9, 11, 11, 26, 55]
@@ -1240,7 +1340,7 @@ def build_report(f1_path, f2_path, out_path, f1_label="Dosya1", f2_label="Dosya2
         ws3.freeze_panes = "A2"
 
         ws4 = wb.create_sheet("HESAP FARKI-SCHETA")
-        write_header(ws4, ["Konto / Счёт", f"Bakiye / Баланс ({f1_label})", f"Bakiye / Баланс ({f2_label})", "Fark / Разница", f"Kayit / Записей ({f1_label})", f"Kayit / Записей ({f2_label})"])
+        write_header(ws4, bal_headers)
         for k, b1, b2, d, c1, c2 in diffs:
             ws4.append([k, b1, b2, d, c1, c2])
             if abs(d) >= 1000:
@@ -1250,9 +1350,8 @@ def build_report(f1_path, f2_path, out_path, f1_label="Dosya1", f2_label="Dosya2
             ws4.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
         ws4.freeze_panes = "A2"
     else:
-        # Hizli yol: sadece hesap farki ozeti (detay sayfalari yok)
         ws4 = wb.create_sheet("HESAP FARKI-SCHETA")
-        write_header(ws4, ["Konto / Счёт", f"Bakiye / Баланс ({f1_label})", f"Bakiye / Баланс ({f2_label})", "Fark / Разница", f"Kayit / Записей ({f1_label})", f"Kayit / Записей ({f2_label})"])
+        write_header(ws4, bal_headers)
         for k, b1, b2, d, c1, c2 in diffs:
             ws4.append([k, b1, b2, d, c1, c2])
         for i, w in enumerate([10, 16, 16, 14, 12, 12], start=1):
@@ -1262,6 +1361,7 @@ def build_report(f1_path, f2_path, out_path, f1_label="Dosya1", f2_label="Dosya2
     wb.save(out_path)
 
     html_path = pdf_path = None
+    warnings = []
     base, _ = os.path.splitext(out_path)
     if write_html or write_pdf:
         from report_extra import write_html_report, write_pdf_report
@@ -1272,9 +1372,15 @@ def build_report(f1_path, f2_path, out_path, f1_label="Dosya1", f2_label="Dosya2
             groups=groups, diffs=diffs, lang=lang,
         )
         if write_html:
-            html_path = write_html_report(base + ".html", **common)
+            try:
+                html_path = write_html_report(base + ".html", **common)
+            except Exception as ex:
+                warnings.append(f"html: {ex}")
         if write_pdf:
-            pdf_path = write_pdf_report(base + ".pdf", **common)
+            try:
+                pdf_path = write_pdf_report(base + ".pdf", **common)
+            except Exception as ex:
+                warnings.append(f"pdf: {ex}")
 
     _progress(progress_cb, 100, "done")
     return {
@@ -1289,4 +1395,5 @@ def build_report(f1_path, f2_path, out_path, f1_label="Dosya1", f2_label="Dosya2
         "mismatch_count": mismatch_count,
         "only1_count": only1_count,
         "only2_count": only2_count,
+        "warnings": warnings,
     }

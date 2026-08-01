@@ -24,9 +24,10 @@ SOFTWARE.
 
 Community Edition
 -----------------
-This MIT license covers the Community Edition of Evrak Karsilastirma Araci
-(single-pair GUI/CLI comparison and related open features).
+This MIT license covers the Community Edition, including single-pair GUI/CLI
+comparison, Excel/HTML/PDF reports, folder/batch comparison, and SQLite result
+archival.
 
-Enterprise features (batch/folder comparison, SQL archival, signed commercial
-distribution, and related paid capabilities) are offered under a separate
-commercial license. See LICENSE.COMMERCIAL.
+Enterprise offerings (signed commercial binaries, priority support / SLA, and
+optional future paid packaging) are described separately in LICENSE.COMMERCIAL
+and require a signed agreement when offered.

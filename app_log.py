@@ -4,7 +4,9 @@ import logging
 import os
 from datetime import datetime
 
-ROOT = os.path.dirname(os.path.abspath(__file__))
+from paths import app_root
+
+ROOT = app_root()
 LOG_DIR = os.path.join(ROOT, "logs")
 _LOGGER = None
 

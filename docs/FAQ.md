@@ -15,7 +15,8 @@ python karsilastir.py file1.csv file2.xlsx -o report.xlsx --html --pdf
 python cli.py file1.csv file2.xlsx --lang en
 ```
 
-Exit codes: `0` success, `1` format/IO error, `2` unexpected error.
+Exit codes: `0` success (Excel written; HTML/PDF failures are warnings on stderr),
+`1` format/IO error, `2` unexpected error before/during Excel write.
 
 ## HTML / PDF reports?
 
@@ -24,9 +25,13 @@ Exit codes: `0` success, `1` format/IO error, `2` unexpected error.
 
 ## Batch / folder compare?
 
+CLI:
+
 ```bash
 python karsilastir.py folder_a folder_b --batch -o batch_out --html --fast
 ```
+
+GUI: **Batch folders…** (same pairing; respects Fast / HTML / PDF / Archive checkboxes).
 
 Pairs files by matching basename (`--batch-mode stem`, default) or sorted zip order.
 
@@ -36,7 +41,10 @@ Pairs files by matching basename (`--batch-mode stem`, default) or sorted zip or
 python karsilastir.py a.csv b.xlsx --archive data/compare_archive.db
 ```
 
-GUI also appends successful runs to `data/compare_archive.db`.
+GUI: **Save to archive** checkbox (default on) and **Archive…** to browse recent runs.
+Archive DB defaults to `data/compare_archive.db` next to the app (source tree or exe
+folder — same path for single compare, batch, CLI `--archive`, and Archive browser).
+Archive failures show a warning (they no longer fail silently).
 
 ## Where is the report saved?
 
@@ -62,8 +70,9 @@ See `LICENSE` and `LICENSE.COMMERCIAL`.
 
 ## Logs?
 
-Each comparison appends to `logs/compare_YYYYMMDD.log` (paths, formats,
-duration, summary counts, errors).
+Each comparison appends to `logs/compare_YYYYMMDD.log` next to the app
+(source tree or the folder containing the `.exe` — never under PyInstaller’s
+temporary `_MEIPASS`). Archive DB defaults to `data/compare_archive.db` there.
 
 ## Benchmarks?
 

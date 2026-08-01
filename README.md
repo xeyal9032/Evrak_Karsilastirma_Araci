@@ -47,7 +47,9 @@ Ayrıntı: [LICENSE](LICENSE), [LICENSE.COMMERCIAL](LICENSE.COMMERCIAL), [docs/F
 | Sarı | İki dosyada da eşleşti |
 | Turuncu | Aynı kayıt, tutar veya alan farkı — kontrol edin |
 | Yeşil | Dosya içi mükerrer + storno (net sıfır, gerçek fark değil) |
-| Kırmızı | Sadece bir dosyada var — en kritik satırlar |
+| Kırmızı | Sadece bir dosyada (mevcut satır + karşı tarafta eksik) — en kritik |
+
+Excel / HTML / PDF metinleri dil seçimine göre çevrilir (sayfa adları sabit kod).
 
 ---
 
@@ -115,11 +117,14 @@ dist/Evrak_Karsilastirma_Araci.exe
 dist/Evrak_Karsilastirma_Araci.exe file1.csv file2.xlsx -o out.xlsx
 ```
 
+Exe windowed GUI’dir (`console=False`); CLI argümanlarıyla çalıştırınca Windows konsolu
+açılır/parent’a bağlanır (stdout/stderr görünür). `logs/` ve `data/` exe yanına yazılır.
+
 Exe paketleme:
 
 ```bash
 python -m venv .venv_build
-.\.venv_build\Scripts\python.exe -m pip install openpyxl pyinstaller
+.\.venv_build\Scripts\python.exe -m pip install -r requirements.txt pyinstaller
 .\.venv_build\Scripts\python.exe -m PyInstaller Evrak_Karsilastirma_Araci.spec --noconfirm
 ```
 
