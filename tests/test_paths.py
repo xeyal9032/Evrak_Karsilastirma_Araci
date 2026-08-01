@@ -19,15 +19,16 @@ class TestAppRoot(unittest.TestCase):
         )
 
     def test_frozen_uses_exe_dir_not_meipass(self):
-        fake_exe = r"C:\Program Files\App\tool.exe"
-        fake_meipass = r"C:\Users\tmp\_MEI12345"
+        # Use POSIX absolute paths so abspath() is stable on Linux CI and Windows.
+        fake_exe = "/opt/App/tool.exe"
+        fake_meipass = "/tmp/_MEI12345"
         with mock.patch.object(paths.sys, "frozen", True, create=True):
             with mock.patch.object(paths.sys, "executable", fake_exe):
                 with mock.patch.object(paths.sys, "_MEIPASS", fake_meipass, create=True):
                     root = paths.app_root()
                     self.assertEqual(
                         os.path.normcase(root),
-                        os.path.normcase(r"C:\Program Files\App"),
+                        os.path.normcase("/opt/App"),
                     )
                     self.assertNotEqual(
                         os.path.normcase(root),
